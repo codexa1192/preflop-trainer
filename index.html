@@ -43,7 +43,7 @@ button {
 .app {
   width: min(720px, 100%);
   margin: 0 auto;
-  padding: 14px 14px calc(24px + env(safe-area-inset-bottom));
+  padding: calc(14px + env(safe-area-inset-top)) 14px calc(24px + env(safe-area-inset-bottom));
 }
 
 .topbar {
@@ -52,6 +52,8 @@ button {
   align-items: flex-start;
   gap: 12px;
   margin-bottom: 12px;
+  position: relative;
+  z-index: 2;
 }
 
 .topbar h1 {
@@ -78,6 +80,9 @@ button {
   padding: 0 14px;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
+  position: relative;
+  z-index: 3;
+  pointer-events: auto;
 }
 
 .ghost-btn:active {
@@ -88,6 +93,11 @@ button {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+  margin-bottom: 12px;
+}
+
+.settings-btn-alt {
+  width: 100%;
   margin-bottom: 12px;
 }
 
@@ -530,6 +540,7 @@ button {
       <button id="modeThreeBetBtn" class="mode-btn" type="button" aria-pressed="false">3-Bet vs Opener</button>
       <button id="modeVsRfiBtn" class="mode-btn" type="button" aria-pressed="false">vs Open (VS_RFI)</button>
     </section>
+    <button id="openSettingsBtnAlt" class="ghost-btn settings-btn-alt" type="button">Settings</button>
 
     <section class="quiz-card">
       <p id="spotLine" class="spot-line">RFI - Position UTG</p>
@@ -777,6 +788,7 @@ button {
     modeThreeBetBtn: document.getElementById("modeThreeBetBtn"),
     modeVsRfiBtn: document.getElementById("modeVsRfiBtn"),
     openSettingsBtn: document.getElementById("openSettingsBtn"),
+    openSettingsBtnAlt: document.getElementById("openSettingsBtnAlt"),
     closeSettingsBtn: document.getElementById("closeSettingsBtn"),
     settingsModal: document.getElementById("settingsModal"),
     settingsNotice: document.getElementById("settingsNotice"),
@@ -835,6 +847,7 @@ button {
     el.nextBtn.addEventListener("click", () => nextQuestion());
 
     el.openSettingsBtn.addEventListener("click", openSettings);
+    el.openSettingsBtnAlt.addEventListener("click", openSettings);
     el.closeSettingsBtn.addEventListener("click", closeSettings);
 
     el.settingsModal.addEventListener("click", (evt) => {
