@@ -665,6 +665,18 @@ button {
     [VS_RFI_SAMPLING_MODES.BORDERLINE_HEAVY]: "Borderline-heavy"
   };
 
+  const BORDERLINE_MIX_BLOCK_SIZE = 20;
+  const THREEBET_BORDERLINE_HEAVY_WEIGHTS = {
+    THREE_BET: 0.25,
+    BORDERLINE: 0.5,
+    REST: 0.25
+  };
+  const VS_RFI_BORDERLINE_HEAVY_WEIGHTS = {
+    THREE_BET: 0.25,
+    CALL: 0.45,
+    REST: 0.3
+  };
+
   const RFI_POSITIONS = ["UTG", "UTG1", "MP1", "MP2", "MP3", "CO", "BTN", "SB"];
   const THREE_BET_BUCKETS = ["EP", "MP", "CO", "BTN"];
   const POSITION_ORDER_9H = ["UTG", "UTG1", "MP1", "MP2", "MP3", "CO", "BTN", "SB", "BB"];
@@ -730,6 +742,8 @@ button {
   const VS_RFI_CALL_SET = buildVsRfiCallSets();
   const VS_RFI_SPOTS = buildVsRfiSpots();
   const VS_RFI_SPOTS_BY_BUCKET = buildVsRfiSpotsByBucket();
+  const VS_RFI_OPENERS_BY_BUCKET = buildVsRfiOpenersByBucket();
+  const VS_RFI_HEROES_BY_OPENER = buildVsRfiHeroesByOpener();
   const VS_RFI_CONTEXTS = buildVsRfiContexts();
   const PLAUSIBLE_CALL_SET = parseRangeList("77+, ATo+, KQo, ATs+, KTs+, QTs+, JTs, T9s, 98s, A5s, A4s, A3s, A2s");
   const BORDERLINE_SET = buildBorderlineSets();
@@ -756,6 +770,7 @@ button {
   let stats = loadStats();
   let currentQuestion = null;
   let whyVisible = false;
+  const evenSamplerState = {};
 
   const el = {
     modeRfiBtn: document.getElementById("modeRfiBtn"),
@@ -901,8 +916,8 @@ button {
   function buildThreeBetSamplingGrid() {
     const options = [
       { value: THREEBET_SAMPLING_MODES.UNIFORM_169, label: "Uniform (169)" },
-      { value: THREEBET_SAMPLING_MODES.PLAUSIBLE_ONLY, label: "Plausible only (Recommended)" },
-      { value: THREEBET_SAMPLING_MODES.BORDERLINE_HEAVY, label: "Borderline-heavy (Recommended)" }
+      { value: THREEBET_SAMPLING_MODES.PLAUSIBLE_ONLY, label: "Plausible only" },
+      { value: THREEBET_SAMPLING_MODES.BORDERLINE_HEAVY, label: "Borderline-heavy (balanced mix)" }
     ];
 
     el.threeBetSamplingGrid.textContent = "";
@@ -941,7 +956,7 @@ button {
   function buildVsRfiSamplingGrid() {
     const options = [
       { value: VS_RFI_SAMPLING_MODES.UNIFORM_169, label: "Uniform (1326 combos)" },
-      { value: VS_RFI_SAMPLING_MODES.BORDERLINE_HEAVY, label: "Borderline-heavy (Recommended)" }
+      { value: VS_RFI_SAMPLING_MODES.BORDERLINE_HEAVY, label: "Borderline-heavy (balanced mix)" }
     ];
 
     el.vsRfiSamplingGrid.textContent = "";
@@ -1241,6 +1256,84 @@ button {
     return arr[Math.floor(Math.random() * arr.length)];
   }
 
+  function shuffleCopy(values) {
+    const out = values.slice();
+    for (let i = out.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const tmp = out[i];
+      out[i] = out[j];
+      out[j] = tmp;
+    }
+    return out;
+  }
+
+  function drawEvenFromArray(key, values, signature) {
+    if (!Array.isArray(values) || values.length === 0) {
+      throw new Error("Cannot sample from empty array for key: " + key);
+    }
+
+    const state = evenSamplerState[key] || { signature: "", remaining: [] };
+    if (state.signature !== signature || state.remaining.length === 0) {
+      state.signature = signature;
+      state.remaining = shuffleCopy(values);
+      evenSamplerState[key] = state;
+    }
+    return state.remaining.pop();
+  }
+
+  function drawWeightedToken(key, weightedOptions, signature) {
+    const positive = weightedOptions.filter((option) => option.weight > 0);
+    if (!positive.length) {
+      throw new Error("Cannot sample weighted token with no positive-weight options for key: " + key);
+    }
+
+    const state = evenSamplerState[key] || { signature: "", remaining: [] };
+    if (state.signature !== signature || state.remaining.length === 0) {
+      state.signature = signature;
+      state.remaining = shuffleCopy(buildWeightedTokenDeck(positive));
+      evenSamplerState[key] = state;
+    }
+    return state.remaining.pop();
+  }
+
+  function buildWeightedTokenDeck(weightedOptions) {
+    const totalWeight = weightedOptions.reduce((sum, option) => sum + option.weight, 0);
+    if (totalWeight <= 0) {
+      return weightedOptions.map((option) => option.id);
+    }
+
+    const scaled = weightedOptions.map((option) => {
+      const target = (option.weight / totalWeight) * BORDERLINE_MIX_BLOCK_SIZE;
+      return {
+        id: option.id,
+        count: Math.floor(target),
+        remainder: target - Math.floor(target)
+      };
+    });
+
+    let assigned = scaled.reduce((sum, option) => sum + option.count, 0);
+    if (assigned < BORDERLINE_MIX_BLOCK_SIZE) {
+      const byRemainder = scaled.slice().sort((a, b) => b.remainder - a.remainder);
+      for (let i = 0; i < BORDERLINE_MIX_BLOCK_SIZE - assigned; i += 1) {
+        byRemainder[i % byRemainder.length].count += 1;
+      }
+      assigned = BORDERLINE_MIX_BLOCK_SIZE;
+    }
+
+    const deck = [];
+    scaled.forEach((option) => {
+      for (let i = 0; i < option.count; i += 1) {
+        deck.push(option.id);
+      }
+    });
+
+    if (!deck.length && weightedOptions.length) {
+      return weightedOptions.map((option) => option.id);
+    }
+
+    return deck;
+  }
+
   function hasDebugFlag() {
     try {
       if (typeof URLSearchParams !== "undefined") {
@@ -1269,8 +1362,12 @@ button {
 
   function generateQuestion(mode) {
     if (mode === MODES.RFI) {
-      const context = randomPick(settings.enabledRfiPositions);
-      const handClass = randomPick(ALL_HAND_CLASSES);
+      const context = drawEvenFromArray(
+        "context:RFI",
+        settings.enabledRfiPositions,
+        settings.enabledRfiPositions.join("|")
+      );
+      const handClass = drawEvenFromArray("hands:RFI:UNIFORM_169", ALL_HAND_CLASSES, "ALL_HAND_CLASSES");
       const correctAction = PARSED_RANGES[MODES.RFI][context].has(handClass) ? ACTIONS.OPEN : ACTIONS.FOLD;
       return {
         mode,
@@ -1283,7 +1380,11 @@ button {
     }
 
     if (mode === MODES.THREE_BET) {
-      const context = randomPick(settings.enabledThreeBetBuckets);
+      const context = drawEvenFromArray(
+        "context:THREE_BET",
+        settings.enabledThreeBetBuckets,
+        settings.enabledThreeBetBuckets.join("|")
+      );
       const handClass = sampleThreeBetHandClass(context, settings.threeBetSamplingMode);
       const correctAction = PARSED_RANGES[MODES.THREE_BET][context].has(handClass) ? ACTIONS.THREE_BET : ACTIONS.NOT_THREE_BET;
       return {
@@ -1300,8 +1401,21 @@ button {
   }
 
   function generateVsRfiQuestion() {
-    const bucket = randomPick(settings.enabledThreeBetBuckets);
-    const spot = randomPick(VS_RFI_SPOTS_BY_BUCKET[bucket]);
+    const bucket = drawEvenFromArray(
+      "context:VS_RFI_BUCKET",
+      settings.enabledThreeBetBuckets,
+      settings.enabledThreeBetBuckets.join("|")
+    );
+    const openerPosition = drawEvenFromArray(
+      "context:VS_RFI_OPENER:" + bucket,
+      VS_RFI_OPENERS_BY_BUCKET[bucket],
+      bucket + ":" + VS_RFI_OPENERS_BY_BUCKET[bucket].join("|")
+    );
+    const heroPosition = drawEvenFromArray(
+      "context:VS_RFI_HERO:" + openerPosition,
+      VS_RFI_HEROES_BY_OPENER[openerPosition],
+      openerPosition + ":" + VS_RFI_HEROES_BY_OPENER[openerPosition].join("|")
+    );
     const handClass = sampleVsRfiHandClass(bucket, settings.vsRfiSamplingMode);
     const correctAction = getVsRfiCorrectAction(bucket, handClass);
 
@@ -1309,55 +1423,113 @@ button {
       mode: MODES.VS_RFI,
       context: bucket,
       openerBucket: bucket,
-      openerPosition: spot.openerPosition,
-      heroPosition: spot.heroPosition,
+      openerPosition,
+      heroPosition,
       handClass,
       correctAction,
-      statsContextKey: MODES.VS_RFI + ":" + bucket + ":" + spot.heroPosition,
+      statsContextKey: MODES.VS_RFI + ":" + bucket + ":" + heroPosition,
       answered: false
     };
   }
 
   function sampleThreeBetHandClass(bucket, samplingMode) {
     if (samplingMode === THREEBET_SAMPLING_MODES.UNIFORM_169) {
-      return randomPick(ALL_HAND_CLASSES);
+      return drawEvenFromArray("hands:THREE_BET:UNIFORM_169", ALL_HAND_CLASSES, "ALL_HAND_CLASSES");
     }
 
     if (samplingMode === THREEBET_SAMPLING_MODES.PLAUSIBLE_ONLY) {
-      return randomPick(PLAUSIBLE_ARR[bucket]);
+      return drawEvenFromArray(
+        "hands:THREE_BET:PLAUSIBLE_ONLY:" + bucket,
+        PLAUSIBLE_ARR[bucket],
+        bucket + ":" + PLAUSIBLE_ARR[bucket].length
+      );
     }
 
-    const roll = Math.random();
-    if (roll < 0.5 && THREEBET_ARR[bucket].length > 0) {
-      return randomPick(THREEBET_ARR[bucket]);
-    }
-    if (roll < 0.9 && BORDERLINE_ARR[bucket].length > 0) {
-      return randomPick(BORDERLINE_ARR[bucket]);
-    }
-    if (PLAUSIBLE_REST_ARR[bucket].length > 0) {
-      return randomPick(PLAUSIBLE_REST_ARR[bucket]);
+    const groups = [
+      {
+        id: "THREE_BET",
+        weight: THREEBET_BORDERLINE_HEAVY_WEIGHTS.THREE_BET,
+        values: THREEBET_ARR[bucket]
+      },
+      {
+        id: "BORDERLINE",
+        weight: THREEBET_BORDERLINE_HEAVY_WEIGHTS.BORDERLINE,
+        values: BORDERLINE_ARR[bucket]
+      },
+      {
+        id: "REST",
+        weight: THREEBET_BORDERLINE_HEAVY_WEIGHTS.REST,
+        values: PLAUSIBLE_REST_ARR[bucket]
+      }
+    ].filter((group) => group.values.length > 0);
+
+    if (!groups.length) {
+      return drawEvenFromArray(
+        "hands:THREE_BET:FALLBACK:" + bucket,
+        PLAUSIBLE_ARR[bucket],
+        bucket + ":" + PLAUSIBLE_ARR[bucket].length
+      );
     }
 
-    return randomPick(PLAUSIBLE_ARR[bucket]);
+    const mixKey = "mix:THREE_BET:" + bucket;
+    const mixSignature = groups
+      .map((group) => group.id + ":" + group.values.length + ":" + group.weight)
+      .join("|");
+    const category = drawWeightedToken(
+      mixKey,
+      groups.map((group) => ({ id: group.id, weight: group.weight })),
+      mixSignature
+    );
+    const pickedGroup = groups.find((group) => group.id === category) || groups[0];
+    return drawEvenFromArray(
+      "hands:THREE_BET:BORDERLINE_HEAVY:" + bucket + ":" + pickedGroup.id,
+      pickedGroup.values,
+      bucket + ":" + pickedGroup.id + ":" + pickedGroup.values.length
+    );
   }
 
   function sampleVsRfiHandClass(bucket, samplingMode) {
     if (samplingMode === VS_RFI_SAMPLING_MODES.UNIFORM_169) {
-      return randomPick(ALL_COMBOS);
+      return drawEvenFromArray("hands:VS_RFI:UNIFORM_1326", ALL_COMBOS, "ALL_COMBOS");
     }
 
-    const roll = Math.random();
-    if (roll < 0.5 && VS_RFI_THREEBET_COMBOS[bucket].length > 0) {
-      return randomPick(VS_RFI_THREEBET_COMBOS[bucket]);
-    }
-    if (roll < 0.85 && VS_RFI_CALL_COMBOS[bucket].length > 0) {
-      return randomPick(VS_RFI_CALL_COMBOS[bucket]);
-    }
-    if (VS_RFI_REST_COMBOS[bucket].length > 0) {
-      return randomPick(VS_RFI_REST_COMBOS[bucket]);
+    const groups = [
+      {
+        id: "THREE_BET",
+        weight: VS_RFI_BORDERLINE_HEAVY_WEIGHTS.THREE_BET,
+        values: VS_RFI_THREEBET_COMBOS[bucket]
+      },
+      {
+        id: "CALL",
+        weight: VS_RFI_BORDERLINE_HEAVY_WEIGHTS.CALL,
+        values: VS_RFI_CALL_COMBOS[bucket]
+      },
+      {
+        id: "REST",
+        weight: VS_RFI_BORDERLINE_HEAVY_WEIGHTS.REST,
+        values: VS_RFI_REST_COMBOS[bucket]
+      }
+    ].filter((group) => group.values.length > 0);
+
+    if (!groups.length) {
+      return drawEvenFromArray("hands:VS_RFI:FALLBACK", ALL_COMBOS, "ALL_COMBOS");
     }
 
-    return randomPick(ALL_COMBOS);
+    const mixKey = "mix:VS_RFI:" + bucket;
+    const mixSignature = groups
+      .map((group) => group.id + ":" + group.values.length + ":" + group.weight)
+      .join("|");
+    const category = drawWeightedToken(
+      mixKey,
+      groups.map((group) => ({ id: group.id, weight: group.weight })),
+      mixSignature
+    );
+    const pickedGroup = groups.find((group) => group.id === category) || groups[0];
+    return drawEvenFromArray(
+      "hands:VS_RFI:BORDERLINE_HEAVY:" + bucket + ":" + pickedGroup.id,
+      pickedGroup.values,
+      bucket + ":" + pickedGroup.id + ":" + pickedGroup.values.length
+    );
   }
 
   function getVsRfiCorrectAction(bucket, handClass) {
@@ -1475,6 +1647,29 @@ button {
       }
     });
     return spots;
+  }
+
+  function buildVsRfiOpenersByBucket() {
+    const byBucket = {};
+    THREE_BET_BUCKETS.forEach((bucket) => {
+      byBucket[bucket] = [];
+    });
+
+    VS_RFI_OPENERS.forEach((openerPosition) => {
+      const bucket = OPENER_BUCKET_BY_POSITION[openerPosition];
+      byBucket[bucket].push(openerPosition);
+    });
+
+    return byBucket;
+  }
+
+  function buildVsRfiHeroesByOpener() {
+    const byOpener = {};
+    VS_RFI_OPENERS.forEach((openerPosition) => {
+      const openerIndex = POSITION_ORDER_9H.indexOf(openerPosition);
+      byOpener[openerPosition] = POSITION_ORDER_9H.slice(openerIndex + 1);
+    });
+    return byOpener;
   }
 
   function buildVsRfiSpotsByBucket() {
