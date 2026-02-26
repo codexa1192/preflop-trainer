@@ -611,6 +611,11 @@ button {
       </div>
 
       <div class="setting-block">
+        <h3>RFI sampling</h3>
+        <div id="rfiSamplingGrid" class="radio-stack"></div>
+      </div>
+
+      <div class="setting-block">
         <h3>3-Bet buckets</h3>
         <div id="threeBetToggleGrid" class="toggle-grid"></div>
       </div>
@@ -623,6 +628,11 @@ button {
       <div class="setting-block">
         <h3>VS_RFI sampling</h3>
         <div id="vsRfiSamplingGrid" class="radio-stack"></div>
+      </div>
+
+      <div class="setting-block">
+        <h3>VS_RFI spot spread</h3>
+        <div id="vsRfiSpotGrid" class="radio-stack"></div>
       </div>
 
       <button id="resetStatsBtn" class="reset-btn" type="button">Reset Stats</button>
@@ -663,7 +673,17 @@ button {
   const THREEBET_SAMPLING_LABELS = {
     [THREEBET_SAMPLING_MODES.UNIFORM_169]: "Uniform (169)",
     [THREEBET_SAMPLING_MODES.PLAUSIBLE_ONLY]: "Plausible only",
-    [THREEBET_SAMPLING_MODES.BORDERLINE_HEAVY]: "Borderline-heavy"
+    [THREEBET_SAMPLING_MODES.BORDERLINE_HEAVY]: "Borderline-heavy (balanced mix)"
+  };
+
+  const RFI_SAMPLING_MODES = {
+    UNIFORM_169: "UNIFORM_169",
+    BORDERLINE_HEAVY: "BORDERLINE_HEAVY"
+  };
+
+  const RFI_SAMPLING_LABELS = {
+    [RFI_SAMPLING_MODES.UNIFORM_169]: "Uniform (169)",
+    [RFI_SAMPLING_MODES.BORDERLINE_HEAVY]: "Borderline-heavy (balanced mix)"
   };
 
   const VS_RFI_SAMPLING_MODES = {
@@ -673,12 +693,27 @@ button {
 
   const VS_RFI_SAMPLING_LABELS = {
     [VS_RFI_SAMPLING_MODES.UNIFORM_169]: "Uniform (1326 combos)",
-    [VS_RFI_SAMPLING_MODES.BORDERLINE_HEAVY]: "Borderline-heavy"
+    [VS_RFI_SAMPLING_MODES.BORDERLINE_HEAVY]: "Borderline-heavy (balanced mix)"
+  };
+
+  const VS_RFI_SPOT_MODES = {
+    BUCKET_BALANCED: "BUCKET_BALANCED",
+    OPENER_BALANCED: "OPENER_BALANCED"
+  };
+
+  const VS_RFI_SPOT_LABELS = {
+    [VS_RFI_SPOT_MODES.BUCKET_BALANCED]: "Bucket-balanced (legacy)",
+    [VS_RFI_SPOT_MODES.OPENER_BALANCED]: "Opener-balanced"
   };
 
   const BORDERLINE_MIX_BLOCK_SIZE = 20;
   const THREEBET_BORDERLINE_HEAVY_WEIGHTS = {
     THREE_BET: 0.25,
+    BORDERLINE: 0.5,
+    REST: 0.25
+  };
+  const RFI_BORDERLINE_HEAVY_WEIGHTS = {
+    OPEN: 0.25,
     BORDERLINE: 0.5,
     REST: 0.25
   };
@@ -757,9 +792,15 @@ button {
   const VS_RFI_HEROES_BY_OPENER = buildVsRfiHeroesByOpener();
   const VS_RFI_CONTEXTS = buildVsRfiContexts();
   const PLAUSIBLE_CALL_SET = parseRangeList("77+, ATo+, KQo, ATs+, KTs+, QTs+, JTs, T9s, 98s, A5s, A4s, A3s, A2s");
+  const RFI_BORDERLINE_SET = buildRfiBorderlineSets();
   const BORDERLINE_SET = buildBorderlineSets();
+  const RFI_PLAUSIBLE_POOL = buildRfiPlausiblePools();
   const PLAUSIBLE_POOL = buildPlausiblePools();
   const VS_RFI_PLAUSIBLE_POOL = buildVsRfiPlausiblePools();
+  const RFI_OPEN_ARR = {};
+  const RFI_BORDERLINE_ARR = {};
+  const RFI_PLAUSIBLE_ARR = {};
+  const RFI_PLAUSIBLE_REST_ARR = {};
   const THREEBET_ARR = {};
   const BORDERLINE_ARR = {};
   const PLAUSIBLE_ARR = {};
@@ -770,6 +811,7 @@ button {
   const VS_RFI_THREEBET_COMBOS = {};
   const VS_RFI_CALL_COMBOS = {};
   const VS_RFI_REST_COMBOS = {};
+  precomputeRfiPoolArrays();
   precomputeThreeBetPoolArrays();
   precomputeVsRfiPoolArrays();
   const CONTEXT_RANGE_TEXT = buildContextRangeText();
@@ -793,9 +835,11 @@ button {
     settingsModal: document.getElementById("settingsModal"),
     settingsNotice: document.getElementById("settingsNotice"),
     rfiToggleGrid: document.getElementById("rfiToggleGrid"),
+    rfiSamplingGrid: document.getElementById("rfiSamplingGrid"),
     threeBetToggleGrid: document.getElementById("threeBetToggleGrid"),
     threeBetSamplingGrid: document.getElementById("threeBetSamplingGrid"),
     vsRfiSamplingGrid: document.getElementById("vsRfiSamplingGrid"),
+    vsRfiSpotGrid: document.getElementById("vsRfiSpotGrid"),
     resetStatsBtn: document.getElementById("resetStatsBtn"),
     spotLine: document.getElementById("spotLine"),
     samplingLine: document.getElementById("samplingLine"),
@@ -922,8 +966,49 @@ button {
       itemLabel: (value) => "vs " + value
     });
 
+    buildRfiSamplingGrid();
     buildThreeBetSamplingGrid();
     buildVsRfiSamplingGrid();
+    buildVsRfiSpotGrid();
+  }
+
+  function buildRfiSamplingGrid() {
+    const options = [
+      { value: RFI_SAMPLING_MODES.UNIFORM_169, label: "Uniform (169)" },
+      { value: RFI_SAMPLING_MODES.BORDERLINE_HEAVY, label: "Borderline-heavy (balanced mix)" }
+    ];
+
+    el.rfiSamplingGrid.textContent = "";
+    options.forEach((option) => {
+      const id = "rfiSampling_" + option.value;
+      const row = document.createElement("label");
+      row.className = "radio-row";
+      row.setAttribute("for", id);
+
+      const input = document.createElement("input");
+      input.type = "radio";
+      input.name = "rfiSamplingMode";
+      input.id = id;
+      input.value = option.value;
+      input.checked = settings.rfiSamplingMode === option.value;
+
+      const text = document.createElement("span");
+      text.textContent = option.label;
+
+      input.addEventListener("change", () => {
+        if (!input.checked || settings.rfiSamplingMode === option.value) {
+          return;
+        }
+        settings.rfiSamplingMode = option.value;
+        saveSettings();
+        if (settings.mode === MODES.RFI) {
+          nextQuestion();
+        }
+      });
+
+      row.append(input, text);
+      el.rfiSamplingGrid.appendChild(row);
+    });
   }
 
   function buildThreeBetSamplingGrid() {
@@ -1005,6 +1090,45 @@ button {
     });
   }
 
+  function buildVsRfiSpotGrid() {
+    const options = [
+      { value: VS_RFI_SPOT_MODES.OPENER_BALANCED, label: "Opener-balanced (Recommended)" },
+      { value: VS_RFI_SPOT_MODES.BUCKET_BALANCED, label: "Bucket-balanced (legacy)" }
+    ];
+
+    el.vsRfiSpotGrid.textContent = "";
+    options.forEach((option) => {
+      const id = "vsRfiSpot_" + option.value;
+      const row = document.createElement("label");
+      row.className = "radio-row";
+      row.setAttribute("for", id);
+
+      const input = document.createElement("input");
+      input.type = "radio";
+      input.name = "vsRfiSpotMode";
+      input.id = id;
+      input.value = option.value;
+      input.checked = settings.vsRfiSpotMode === option.value;
+
+      const text = document.createElement("span");
+      text.textContent = option.label;
+
+      input.addEventListener("change", () => {
+        if (!input.checked || settings.vsRfiSpotMode === option.value) {
+          return;
+        }
+        settings.vsRfiSpotMode = option.value;
+        saveSettings();
+        if (settings.mode === MODES.VS_RFI) {
+          nextQuestion();
+        }
+      });
+
+      row.append(input, text);
+      el.vsRfiSpotGrid.appendChild(row);
+    });
+  }
+
   function buildToggleGroup(args) {
     const { grid, values, selected, settingKey, itemLabel } = args;
     grid.textContent = "";
@@ -1081,11 +1205,16 @@ button {
       el.spotLine.textContent = SPOT_LABELS[mode] + currentQuestion.context;
     }
 
-    if (mode === MODES.THREE_BET) {
+    if (mode === MODES.RFI) {
+      el.samplingLine.textContent = "Sampling: " + RFI_SAMPLING_LABELS[settings.rfiSamplingMode];
+      el.samplingLine.classList.remove("hidden");
+    } else if (mode === MODES.THREE_BET) {
       el.samplingLine.textContent = "Sampling: " + THREEBET_SAMPLING_LABELS[settings.threeBetSamplingMode];
       el.samplingLine.classList.remove("hidden");
     } else if (mode === MODES.VS_RFI) {
-      el.samplingLine.textContent = "Sampling: " + VS_RFI_SAMPLING_LABELS[settings.vsRfiSamplingMode];
+      el.samplingLine.textContent =
+        "Sampling: " + VS_RFI_SAMPLING_LABELS[settings.vsRfiSamplingMode] +
+        " | Spread: " + VS_RFI_SPOT_LABELS[settings.vsRfiSpotMode];
       el.samplingLine.classList.remove("hidden");
     } else {
       el.samplingLine.classList.add("hidden");
@@ -1380,7 +1509,7 @@ button {
         settings.enabledRfiPositions,
         settings.enabledRfiPositions.join("|")
       );
-      const handClass = drawEvenFromArray("hands:RFI:UNIFORM_169", ALL_HAND_CLASSES, "ALL_HAND_CLASSES");
+      const handClass = sampleRfiHandClass(context, settings.rfiSamplingMode);
       const correctAction = PARSED_RANGES[MODES.RFI][context].has(handClass) ? ACTIONS.OPEN : ACTIONS.FOLD;
       return {
         mode,
@@ -1413,17 +1542,81 @@ button {
     return generateVsRfiQuestion();
   }
 
+  function sampleRfiHandClass(position, samplingMode) {
+    if (samplingMode === RFI_SAMPLING_MODES.UNIFORM_169) {
+      return drawEvenFromArray("hands:RFI:UNIFORM_169", ALL_HAND_CLASSES, "ALL_HAND_CLASSES");
+    }
+
+    const groups = [
+      {
+        id: "OPEN",
+        weight: RFI_BORDERLINE_HEAVY_WEIGHTS.OPEN,
+        values: RFI_OPEN_ARR[position]
+      },
+      {
+        id: "BORDERLINE",
+        weight: RFI_BORDERLINE_HEAVY_WEIGHTS.BORDERLINE,
+        values: RFI_BORDERLINE_ARR[position]
+      },
+      {
+        id: "REST",
+        weight: RFI_BORDERLINE_HEAVY_WEIGHTS.REST,
+        values: RFI_PLAUSIBLE_REST_ARR[position]
+      }
+    ].filter((group) => group.values.length > 0);
+
+    if (!groups.length) {
+      return drawEvenFromArray(
+        "hands:RFI:FALLBACK:" + position,
+        ALL_HAND_CLASSES,
+        "ALL_HAND_CLASSES"
+      );
+    }
+
+    const mixKey = "mix:RFI:" + position;
+    const mixSignature = groups
+      .map((group) => group.id + ":" + group.values.length + ":" + group.weight)
+      .join("|");
+    const category = drawWeightedToken(
+      mixKey,
+      groups.map((group) => ({ id: group.id, weight: group.weight })),
+      mixSignature
+    );
+    const pickedGroup = groups.find((group) => group.id === category) || groups[0];
+    return drawEvenFromArray(
+      "hands:RFI:BORDERLINE_HEAVY:" + position + ":" + pickedGroup.id,
+      pickedGroup.values,
+      position + ":" + pickedGroup.id + ":" + pickedGroup.values.length
+    );
+  }
+
   function generateVsRfiQuestion() {
-    const bucket = drawEvenFromArray(
-      "context:VS_RFI_BUCKET",
-      settings.enabledThreeBetBuckets,
-      settings.enabledThreeBetBuckets.join("|")
-    );
-    const openerPosition = drawEvenFromArray(
-      "context:VS_RFI_OPENER:" + bucket,
-      VS_RFI_OPENERS_BY_BUCKET[bucket],
-      bucket + ":" + VS_RFI_OPENERS_BY_BUCKET[bucket].join("|")
-    );
+    const spotMode = settings.vsRfiSpotMode || VS_RFI_SPOT_MODES.OPENER_BALANCED;
+    const enabledBuckets = settings.enabledThreeBetBuckets;
+    let bucket;
+    let openerPosition;
+
+    if (spotMode === VS_RFI_SPOT_MODES.BUCKET_BALANCED) {
+      bucket = drawEvenFromArray(
+        "context:VS_RFI_BUCKET",
+        enabledBuckets,
+        enabledBuckets.join("|")
+      );
+      openerPosition = drawEvenFromArray(
+        "context:VS_RFI_OPENER_BY_BUCKET:" + bucket,
+        VS_RFI_OPENERS_BY_BUCKET[bucket],
+        bucket + ":" + VS_RFI_OPENERS_BY_BUCKET[bucket].join("|")
+      );
+    } else {
+      const enabledOpeners = getEnabledVsRfiOpeners();
+      openerPosition = drawEvenFromArray(
+        "context:VS_RFI_OPENER_GLOBAL",
+        enabledOpeners,
+        enabledBuckets.join("|") + "::" + enabledOpeners.join("|")
+      );
+      bucket = OPENER_BUCKET_BY_POSITION[openerPosition];
+    }
+
     const heroPosition = drawEvenFromArray(
       "context:VS_RFI_HERO:" + openerPosition,
       VS_RFI_HEROES_BY_OPENER[openerPosition],
@@ -1443,6 +1636,13 @@ button {
       statsContextKey: MODES.VS_RFI + ":" + bucket + ":" + heroPosition,
       answered: false
     };
+  }
+
+  function getEnabledVsRfiOpeners() {
+    const enabledBucketSet = new Set(settings.enabledThreeBetBuckets);
+    return VS_RFI_OPENERS.filter((openerPosition) => {
+      return enabledBucketSet.has(OPENER_BUCKET_BY_POSITION[openerPosition]);
+    });
   }
 
   function sampleThreeBetHandClass(bucket, samplingMode) {
@@ -1723,6 +1923,31 @@ button {
     };
   }
 
+  function buildRfiBorderlineSets() {
+    return {
+      UTG: parseRangeList("99, ATs, KJs, QJs, AJo, KQo"),
+      UTG1: parseRangeList("99, ATs, KJs, QJs, AJo, KQo"),
+      MP1: parseRangeList("77, A9s, KTs, QTs, T9s, ATo, KJo, QJo"),
+      MP2: parseRangeList("77, A9s, KTs, QTs, T9s, ATo, KJo, QJo"),
+      MP3: parseRangeList("77, A9s, KTs, QTs, T9s, ATo, KJo, QJo"),
+      CO: parseRangeList("66, A8s, K9s, Q9s, J9s, 87s, 76s, A9o, KJo, QJo"),
+      BTN: parseRangeList("55, A7s, K8s, Q8s, J8s, T7s, 96s, 75s, 54s, A9o, KTo, QTo, JTo"),
+      SB: parseRangeList("44, A6s, K7s, Q8s, J7s, T7s, 96s, 64s, 53s, A8o, K9o, Q9o, J9o")
+    };
+  }
+
+  function buildRfiPlausiblePools() {
+    const pools = {};
+    RFI_POSITIONS.forEach((position) => {
+      const pool = new Set();
+      PARSED_RANGES[MODES.RFI][position].forEach((handClass) => pool.add(handClass));
+      RFI_BORDERLINE_SET[position].forEach((handClass) => pool.add(handClass));
+      PLAUSIBLE_CALL_SET.forEach((handClass) => pool.add(handClass));
+      pools[position] = pool;
+    });
+    return pools;
+  }
+
   function buildPlausiblePools() {
     const pools = {};
     THREE_BET_BUCKETS.forEach((bucket) => {
@@ -1754,6 +1979,17 @@ button {
       PLAUSIBLE_ARR[bucket] = setToHandClassOrderArray(PLAUSIBLE_POOL[bucket]);
       PLAUSIBLE_REST_ARR[bucket] = PLAUSIBLE_ARR[bucket].filter((handClass) => {
         return !THREEBET_SET[bucket].has(handClass) && !BORDERLINE_SET[bucket].has(handClass);
+      });
+    });
+  }
+
+  function precomputeRfiPoolArrays() {
+    RFI_POSITIONS.forEach((position) => {
+      RFI_OPEN_ARR[position] = setToHandClassOrderArray(PARSED_RANGES[MODES.RFI][position]);
+      RFI_BORDERLINE_ARR[position] = setToHandClassOrderArray(RFI_BORDERLINE_SET[position]);
+      RFI_PLAUSIBLE_ARR[position] = setToHandClassOrderArray(RFI_PLAUSIBLE_POOL[position]);
+      RFI_PLAUSIBLE_REST_ARR[position] = RFI_PLAUSIBLE_ARR[position].filter((handClass) => {
+        return !PARSED_RANGES[MODES.RFI][position].has(handClass) && !RFI_BORDERLINE_SET[position].has(handClass);
       });
     });
   }
@@ -2112,8 +2348,10 @@ button {
       mode: MODES.RFI,
       enabledRfiPositions: RFI_POSITIONS.slice(),
       enabledThreeBetBuckets: THREE_BET_BUCKETS.slice(),
+      rfiSamplingMode: RFI_SAMPLING_MODES.BORDERLINE_HEAVY,
       threeBetSamplingMode: THREEBET_SAMPLING_MODES.PLAUSIBLE_ONLY,
-      vsRfiSamplingMode: VS_RFI_SAMPLING_MODES.BORDERLINE_HEAVY
+      vsRfiSamplingMode: VS_RFI_SAMPLING_MODES.BORDERLINE_HEAVY,
+      vsRfiSpotMode: VS_RFI_SPOT_MODES.OPENER_BALANCED
     };
   }
 
@@ -2138,6 +2376,11 @@ button {
         ? THREE_BET_BUCKETS.filter((value) => parsed.enabledThreeBetBuckets.includes(value))
         : fallback.enabledThreeBetBuckets.slice();
 
+      const rfiSamplingMode =
+        parsed.rfiSamplingMode && RFI_SAMPLING_LABELS[parsed.rfiSamplingMode]
+          ? parsed.rfiSamplingMode
+          : fallback.rfiSamplingMode;
+
       const threeBetSamplingMode =
         parsed.threeBetSamplingMode && THREEBET_SAMPLING_LABELS[parsed.threeBetSamplingMode]
           ? parsed.threeBetSamplingMode
@@ -2148,12 +2391,19 @@ button {
           ? parsed.vsRfiSamplingMode
           : fallback.vsRfiSamplingMode;
 
+      const vsRfiSpotMode =
+        parsed.vsRfiSpotMode && VS_RFI_SPOT_LABELS[parsed.vsRfiSpotMode]
+          ? parsed.vsRfiSpotMode
+          : fallback.vsRfiSpotMode;
+
       return {
         mode,
         enabledRfiPositions: rfi.length ? rfi : fallback.enabledRfiPositions.slice(),
         enabledThreeBetBuckets: threeBet.length ? threeBet : fallback.enabledThreeBetBuckets.slice(),
+        rfiSamplingMode,
         threeBetSamplingMode,
-        vsRfiSamplingMode
+        vsRfiSamplingMode,
+        vsRfiSpotMode
       };
     } catch (err) {
       return fallback;
