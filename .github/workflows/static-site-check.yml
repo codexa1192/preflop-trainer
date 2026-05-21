@@ -1,0 +1,29 @@
+name: Static site check
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  static-site-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Validate public static site
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f index.html
+          test -f README.md
+          test -f SECURITY.md
+          test -f .github/dependabot.yml
+          if grep -RIlE '(BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]+|xox[baprs]-[A-Za-z0-9-]+)' -- index.html README.md SECURITY.md .github/dependabot.yml >/tmp/public-sensitive-pattern-files; then
+            printf 'Potential sensitive pattern found in public tracked files; remove it before merge.\n' >&2
+            exit 1
+          fi
