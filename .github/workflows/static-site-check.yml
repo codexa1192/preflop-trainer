@@ -20,10 +20,17 @@ jobs:
         run: |
           set -euo pipefail
           test -f index.html
+          test -f app.js
+          test -f range-engine.js
+          test -f scripts/validate-ranges.js
           test -f README.md
           test -f SECURITY.md
           test -f .github/dependabot.yml
-          if grep -RIlE '(BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]+|xox[baprs]-[A-Za-z0-9-]+)' -- index.html README.md SECURITY.md .github/dependabot.yml >/tmp/public-sensitive-pattern-files; then
+          node --check app.js
+          node --check range-engine.js
+          node --check scripts/validate-ranges.js
+          node scripts/validate-ranges.js
+          if grep -RIlE '(BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]+|xox[baprs]-[A-Za-z0-9-]+)' -- index.html app.js range-engine.js scripts/validate-ranges.js README.md SECURITY.md .github/dependabot.yml >/tmp/public-sensitive-pattern-files; then
             printf 'Potential sensitive pattern found in public tracked files; remove it before merge.\n' >&2
             exit 1
           fi

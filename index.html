@@ -85,6 +85,12 @@ button {
   pointer-events: auto;
 }
 
+.topbar-actions {
+  display: flex;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
 .ghost-btn:active {
   transform: translateY(1px);
 }
@@ -134,6 +140,14 @@ button {
   color: var(--muted);
   font-size: 15px;
   font-weight: 700;
+}
+
+.assumption-line {
+  margin: 5px 0 0;
+  color: #275346;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.25;
 }
 
 .sampling-line {
@@ -263,6 +277,20 @@ button {
   -webkit-tap-highlight-color: transparent;
 }
 
+.chart-link-btn {
+  margin-top: 8px;
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #b7cadf;
+  border-radius: 10px;
+  background: #f2f7fc;
+  color: #1f4d73;
+  font-size: 15px;
+  font-weight: 800;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
 .why-line {
   margin: 8px 0 0;
   font-size: 14px;
@@ -388,6 +416,7 @@ button {
   justify-content: center;
   align-items: flex-end;
   background: rgba(8, 20, 16, 0.42);
+  z-index: 40;
 }
 
 .modal-card {
@@ -497,6 +526,143 @@ button {
   font-weight: 700;
 }
 
+.setting-note {
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid #cbdcd2;
+  border-radius: 10px;
+  background: #f4f8f6;
+  color: #3b5c50;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.chart-card {
+  max-width: min(760px, 100%);
+}
+
+.chart-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.chart-control {
+  display: grid;
+  gap: 4px;
+  color: #3b5c50;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.chart-control select {
+  min-height: 40px;
+  border: 1px solid #b9ccbf;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #193f32;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+  padding: 0 8px;
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 8px 0 10px;
+}
+
+.legend-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #3b5c50;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.legend-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.dot-fold { background: #eef1ed; }
+.dot-call { background: #9bb8d8; }
+.dot-raise { background: #d98b64; }
+.dot-open { background: #71b889; }
+.dot-mixed { background: #d8c061; }
+
+.chart-matrix {
+  display: grid;
+  grid-template-columns: repeat(13, minmax(0, 1fr));
+  gap: 3px;
+  width: 100%;
+  max-width: 620px;
+  margin: 0 auto;
+}
+
+.chart-cell {
+  aspect-ratio: 1 / 1;
+  min-width: 0;
+  border: 1px solid rgba(25, 63, 50, 0.18);
+  border-radius: 5px;
+  color: #12382b;
+  font-size: clamp(9px, 2.6vw, 13px);
+  font-weight: 900;
+  line-height: 1;
+  padding: 0;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.chart-cell:focus {
+  outline: 2px solid #164f88;
+  outline-offset: 1px;
+}
+
+.chart-fold { background: #f1f3ef; color: #687a72; }
+.chart-call { background: #c9ddf1; }
+.chart-raise { background: #f2c0a5; }
+.chart-open { background: #b9e3c7; }
+.chart-mixed { background: #eee2a2; }
+
+.chart-detail {
+  margin-top: 12px;
+  min-height: 92px;
+  border: 1px solid #cbdcd2;
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 10px;
+  color: #244a3d;
+  line-height: 1.35;
+}
+
+.chart-detail strong,
+.chart-detail span {
+  display: block;
+}
+
+.chart-detail span {
+  margin-top: 3px;
+  color: #546f64;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.chart-detail p {
+  margin: 7px 0 0;
+  font-size: 14px;
+}
+
 @media (min-width: 700px) {
   .app {
     padding-top: 20px;
@@ -522,6 +688,14 @@ button {
     max-height: 86svh;
     padding-bottom: 18px;
   }
+
+  .modal-card.chart-card {
+    max-width: 760px;
+  }
+
+  .chart-controls {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
 }
 </style>
 </head>
@@ -532,18 +706,22 @@ button {
         <h1>Poto Preflop Trainer</h1>
         <p class="subhead">Offline custom preflop drill</p>
       </div>
-      <button id="openSettingsBtn" class="ghost-btn" type="button">Settings</button>
+      <div class="topbar-actions">
+        <button id="openChartsBtn" class="ghost-btn" type="button">Charts</button>
+        <button id="openSettingsBtn" class="ghost-btn" type="button">Settings</button>
+      </div>
     </header>
 
     <section class="mode-toggle" aria-label="Quiz mode">
       <button id="modeRfiBtn" class="mode-btn" type="button" aria-pressed="true">RFI</button>
       <button id="modeThreeBetBtn" class="mode-btn" type="button" aria-pressed="false">3-Bet vs Opener</button>
-      <button id="modeVsRfiBtn" class="mode-btn" type="button" aria-pressed="false">vs Open (VS_RFI)</button>
+      <button id="modeVsRfiBtn" class="mode-btn" type="button" aria-pressed="false">vs Open</button>
     </section>
     <button id="openSettingsBtnAlt" class="ghost-btn settings-btn-alt" type="button">Settings</button>
 
     <section class="quiz-card">
       <p id="spotLine" class="spot-line">RFI - Position UTG</p>
+      <p id="assumptionLine" class="assumption-line">Live $1/$3 Default · 8-handed · 100bb · no ante</p>
       <p id="samplingLine" class="sampling-line hidden">Sampling: Plausible only</p>
       <p id="handLine" class="hand-line">AKo</p>
       <p class="prompt">Choose action</p>
@@ -558,6 +736,7 @@ button {
       </div>
       <button id="whyBtn" class="why-btn hidden" type="button">Why?</button>
       <p id="whyLine" class="why-line hidden"></p>
+      <button id="viewCurrentChartBtn" class="chart-link-btn hidden" type="button">View current chart</button>
       <button id="nextBtn" class="next-btn hidden" type="button">Next Hand</button>
     </section>
 
@@ -583,11 +762,11 @@ button {
         <ul id="rfiStatsList" class="stat-list"></ul>
       </div>
       <div class="stat-group">
-        <h3>Accuracy by 3-Bet Bucket</h3>
+        <h3>Accuracy by 3-Bet Spot</h3>
         <ul id="threeBetStatsList" class="stat-list"></ul>
       </div>
       <div class="stat-group">
-        <h3>Accuracy by VS_RFI Spot</h3>
+        <h3>Accuracy by vs Open Spot</h3>
         <ul id="vsRfiStatsList" class="stat-list"></ul>
       </div>
       <div class="stat-group">
@@ -606,6 +785,16 @@ button {
       <p class="modal-copy">Pick which spots appear in each quiz mode.</p>
 
       <div class="setting-block">
+        <h3>Opener profile</h3>
+        <div id="profileGrid" class="radio-stack"></div>
+      </div>
+
+      <div class="setting-block">
+        <h3>Open size</h3>
+        <div id="openSizeGrid" class="radio-stack"></div>
+      </div>
+
+      <div class="setting-block">
         <h3>RFI positions</h3>
         <div id="rfiToggleGrid" class="toggle-grid"></div>
       </div>
@@ -616,7 +805,7 @@ button {
       </div>
 
       <div class="setting-block">
-        <h3>3-Bet buckets</h3>
+        <h3>Openers for facing-open drills</h3>
         <div id="threeBetToggleGrid" class="toggle-grid"></div>
       </div>
 
@@ -626,12 +815,12 @@ button {
       </div>
 
       <div class="setting-block">
-        <h3>VS_RFI sampling</h3>
+        <h3>vs Open sampling</h3>
         <div id="vsRfiSamplingGrid" class="radio-stack"></div>
       </div>
 
       <div class="setting-block">
-        <h3>VS_RFI spot spread</h3>
+        <h3>vs Open spot spread</h3>
         <div id="vsRfiSpotGrid" class="radio-stack"></div>
       </div>
 
@@ -640,1889 +829,51 @@ button {
     </div>
   </div>
 
-<script>
-(() => {
-  "use strict";
-
-  const DEBUG_MODE = hasDebugFlag();
-
-  // Hand classes use high-card-first format: AA, AKs, AKo, etc.
-  const RANKS = ["A", "K", "Q", "J", "T", "9", "8", "7", "6", "5", "4", "3", "2"];
-  const RANK_INDEX = buildRankIndex();
-
-  const MODES = {
-    RFI: "RFI",
-    THREE_BET: "THREEBET",
-    VS_RFI: "VS_RFI"
-  };
-
-  const ACTIONS = {
-    OPEN: "OPEN",
-    FOLD: "FOLD",
-    THREE_BET: "3-BET",
-    NOT_THREE_BET: "NOT",
-    CALL: "CALL"
-  };
-
-  const THREEBET_SAMPLING_MODES = {
-    UNIFORM_169: "UNIFORM_169",
-    PLAUSIBLE_ONLY: "PLAUSIBLE_ONLY",
-    BORDERLINE_HEAVY: "BORDERLINE_HEAVY"
-  };
-
-  const THREEBET_SAMPLING_LABELS = {
-    [THREEBET_SAMPLING_MODES.UNIFORM_169]: "Uniform (169)",
-    [THREEBET_SAMPLING_MODES.PLAUSIBLE_ONLY]: "Plausible only",
-    [THREEBET_SAMPLING_MODES.BORDERLINE_HEAVY]: "Borderline-heavy (balanced mix)"
-  };
-
-  const RFI_SAMPLING_MODES = {
-    UNIFORM_169: "UNIFORM_169",
-    BORDERLINE_HEAVY: "BORDERLINE_HEAVY"
-  };
-
-  const RFI_SAMPLING_LABELS = {
-    [RFI_SAMPLING_MODES.UNIFORM_169]: "Uniform (169)",
-    [RFI_SAMPLING_MODES.BORDERLINE_HEAVY]: "Borderline-heavy (balanced mix)"
-  };
-
-  const VS_RFI_SAMPLING_MODES = {
-    UNIFORM_169: "UNIFORM_169",
-    BORDERLINE_HEAVY: "BORDERLINE_HEAVY"
-  };
-
-  const VS_RFI_SAMPLING_LABELS = {
-    [VS_RFI_SAMPLING_MODES.UNIFORM_169]: "Uniform (1326 combos)",
-    [VS_RFI_SAMPLING_MODES.BORDERLINE_HEAVY]: "Borderline-heavy (balanced mix)"
-  };
-
-  const VS_RFI_SPOT_MODES = {
-    BUCKET_BALANCED: "BUCKET_BALANCED",
-    OPENER_BALANCED: "OPENER_BALANCED"
-  };
-
-  const VS_RFI_SPOT_LABELS = {
-    [VS_RFI_SPOT_MODES.BUCKET_BALANCED]: "Bucket-balanced (legacy)",
-    [VS_RFI_SPOT_MODES.OPENER_BALANCED]: "Opener-balanced"
-  };
-
-  const BORDERLINE_MIX_BLOCK_SIZE = 20;
-  const THREEBET_BORDERLINE_HEAVY_WEIGHTS = {
-    THREE_BET: 0.25,
-    BORDERLINE: 0.5,
-    REST: 0.25
-  };
-  const RFI_BORDERLINE_HEAVY_WEIGHTS = {
-    OPEN: 0.25,
-    BORDERLINE: 0.5,
-    REST: 0.25
-  };
-  const VS_RFI_BORDERLINE_HEAVY_WEIGHTS = {
-    THREE_BET: 0.25,
-    CALL: 0.45,
-    REST: 0.3
-  };
-
-  const RFI_POSITIONS = ["UTG", "UTG1", "MP1", "MP2", "MP3", "CO", "BTN", "SB"];
-  const THREE_BET_BUCKETS = ["EP", "MP", "CO", "BTN"];
-  const POSITION_ORDER_9H = ["UTG", "UTG1", "MP1", "MP2", "MP3", "CO", "BTN", "SB", "BB"];
-  const VS_RFI_OPENERS = ["UTG", "UTG1", "MP1", "MP2", "MP3", "CO", "BTN"];
-  const THREE_BET_BUCKET_OPENERS = {
-    EP: ["UTG", "UTG1"],
-    MP: ["MP1", "MP2", "MP3"],
-    CO: ["CO"],
-    BTN: ["BTN"]
-  };
-  const OPENER_BUCKET_BY_POSITION = {
-    UTG: "EP",
-    UTG1: "EP",
-    MP1: "MP",
-    MP2: "MP",
-    MP3: "MP",
-    CO: "CO",
-    BTN: "BTN"
-  };
-
-  const RANGE_SOURCE = {
-    [MODES.RFI]: {
-      UTG: "TT+, AJs+, KQs, AQo+",
-      UTG1: "TT+, AJs+, KQs, AQo+",
-      MP1: "88+, ATs+, KJs+, QJs, JTs, AJo+, KQo",
-      MP2: "88+, ATs+, KJs+, QJs, JTs, AJo+, KQo",
-      MP3: "88+, ATs+, KJs+, QJs, JTs, AJo+, KQo",
-      CO: "77+, A9s+, KTs+, QTs+, JTs, T9s, 98s, ATo+, KQo",
-      BTN: "66+, A8s+, K9s+, Q9s+, J9s+, T8s+, 97s+, 86s+, 76s, 65s, ATo+, KJo+, QJo",
-      SB: "55+, A7s+, K8s+, Q9s+, J8s+, T8s+, 97s+, 86s+, 75s+, 65s, 54s, A9o+, KTo+, QTo+, JTo"
-    },
-    [MODES.THREE_BET]: {
-      EP: "QQ+, AK",
-      MP: "JJ+, AQs+, AKo",
-      CO: "TT+, AQs+, AQo+, AJs+, KQs",
-      BTN: "TT+, AQs+, AQo+, AJs+, KQs"
-    }
-  };
-
-  const VS_RFI_CALL_RANGE_SOURCE = {
-    EP: "99, TT, JJ, AQs, KQs",
-    MP: "88, 99, TT, JJ, AJs, AQs, KQs, QJs, JTs",
-    CO: "77, 88, 99, ATs, AJs, AQs, KJs, KQs, QJs, JTs, T9s, 98s, AJo",
-    BTN: "66, 77, 88, 99, A9s, ATs, AJs, AQs, KTs, KJs, KQs, QTs, QJs, JTs, T9s, 98s, ATo, AJo, KQo"
-  };
-
-  const STORAGE_KEYS = {
-    settings: "poto_preflop_trainer_settings_v1",
-    stats: "poto_preflop_trainer_stats_v1"
-  };
-
-  const SPOT_LABELS = {
-    [MODES.RFI]: "RFI - Position ",
-    [MODES.THREE_BET]: "3-bet bucket: vs "
-  };
-
-  // Precompute all 169 classes once and parse all range strings once.
-  const ALL_HAND_CLASSES = buildAllHandClasses();
-  const ALL_COMBOS = buildAllCombos();
-  const HAND_CLASS_SET = new Set(ALL_HAND_CLASSES);
-  const PARSED_RANGES = buildParsedRanges();
-  const THREEBET_SET = PARSED_RANGES[MODES.THREE_BET];
-  const VS_RFI_CALL_SET = buildVsRfiCallSets();
-  const VS_RFI_SPOTS = buildVsRfiSpots();
-  const VS_RFI_SPOTS_BY_BUCKET = buildVsRfiSpotsByBucket();
-  const VS_RFI_OPENERS_BY_BUCKET = buildVsRfiOpenersByBucket();
-  const VS_RFI_HEROES_BY_OPENER = buildVsRfiHeroesByOpener();
-  const VS_RFI_CONTEXTS = buildVsRfiContexts();
-  const PLAUSIBLE_CALL_SET = parseRangeList("77+, ATo+, KQo, ATs+, KTs+, QTs+, JTs, T9s, 98s, A5s, A4s, A3s, A2s");
-  const RFI_BORDERLINE_SET = buildRfiBorderlineSets();
-  const BORDERLINE_SET = buildBorderlineSets();
-  const RFI_PLAUSIBLE_POOL = buildRfiPlausiblePools();
-  const PLAUSIBLE_POOL = buildPlausiblePools();
-  const VS_RFI_PLAUSIBLE_POOL = buildVsRfiPlausiblePools();
-  const RFI_OPEN_ARR = {};
-  const RFI_BORDERLINE_ARR = {};
-  const RFI_PLAUSIBLE_ARR = {};
-  const RFI_PLAUSIBLE_REST_ARR = {};
-  const THREEBET_ARR = {};
-  const BORDERLINE_ARR = {};
-  const PLAUSIBLE_ARR = {};
-  const PLAUSIBLE_REST_ARR = {};
-  const VS_RFI_CALL_ARR = {};
-  const VS_RFI_PLAUSIBLE_ARR = {};
-  const VS_RFI_PLAUSIBLE_REST_ARR = {};
-  const VS_RFI_THREEBET_COMBOS = {};
-  const VS_RFI_CALL_COMBOS = {};
-  const VS_RFI_REST_COMBOS = {};
-  precomputeRfiPoolArrays();
-  precomputeThreeBetPoolArrays();
-  precomputeVsRfiPoolArrays();
-  const CONTEXT_RANGE_TEXT = buildContextRangeText();
-
-  let storageAvailable = true;
-  let storageWarningShown = false;
-
-  let settings = loadSettings();
-  let stats = loadStats();
-  let currentQuestion = null;
-  let whyVisible = false;
-  const evenSamplerState = {};
-
-  const el = {
-    modeRfiBtn: document.getElementById("modeRfiBtn"),
-    modeThreeBetBtn: document.getElementById("modeThreeBetBtn"),
-    modeVsRfiBtn: document.getElementById("modeVsRfiBtn"),
-    openSettingsBtn: document.getElementById("openSettingsBtn"),
-    openSettingsBtnAlt: document.getElementById("openSettingsBtnAlt"),
-    closeSettingsBtn: document.getElementById("closeSettingsBtn"),
-    settingsModal: document.getElementById("settingsModal"),
-    settingsNotice: document.getElementById("settingsNotice"),
-    rfiToggleGrid: document.getElementById("rfiToggleGrid"),
-    rfiSamplingGrid: document.getElementById("rfiSamplingGrid"),
-    threeBetToggleGrid: document.getElementById("threeBetToggleGrid"),
-    threeBetSamplingGrid: document.getElementById("threeBetSamplingGrid"),
-    vsRfiSamplingGrid: document.getElementById("vsRfiSamplingGrid"),
-    vsRfiSpotGrid: document.getElementById("vsRfiSpotGrid"),
-    resetStatsBtn: document.getElementById("resetStatsBtn"),
-    spotLine: document.getElementById("spotLine"),
-    samplingLine: document.getElementById("samplingLine"),
-    handLine: document.getElementById("handLine"),
-    actionsRow: document.getElementById("actionsRow"),
-    yesActionBtn: document.getElementById("yesActionBtn"),
-    callActionBtn: document.getElementById("callActionBtn"),
-    noActionBtn: document.getElementById("noActionBtn"),
-    feedbackBox: document.getElementById("feedbackBox"),
-    resultLine: document.getElementById("resultLine"),
-    detailLine: document.getElementById("detailLine"),
-    whyBtn: document.getElementById("whyBtn"),
-    whyLine: document.getElementById("whyLine"),
-    nextBtn: document.getElementById("nextBtn"),
-    attemptsValue: document.getElementById("attemptsValue"),
-    correctValue: document.getElementById("correctValue"),
-    accuracyValue: document.getElementById("accuracyValue"),
-    rfiStatsList: document.getElementById("rfiStatsList"),
-    threeBetStatsList: document.getElementById("threeBetStatsList"),
-    vsRfiStatsList: document.getElementById("vsRfiStatsList"),
-    missList: document.getElementById("missList")
-  };
-
-  bindEvents();
-  buildSettingsUI();
-  renderModeButtons();
-  setActionLabelsForMode(settings.mode);
-  renderStats();
-  nextQuestion();
-
-  if (DEBUG_MODE) {
-    logThreeBetPoolSizes();
-    logVsRfiPoolSizes();
-    runComboWeightSanity();
-    runParserSelfTest();
-    runRangeMembershipSelfTest();
-    runPerfSelfCheck();
-  }
-
-  function bindEvents() {
-    el.modeRfiBtn.addEventListener("click", () => setMode(MODES.RFI));
-    el.modeThreeBetBtn.addEventListener("click", () => setMode(MODES.THREE_BET));
-    el.modeVsRfiBtn.addEventListener("click", () => setMode(MODES.VS_RFI));
-
-    el.yesActionBtn.addEventListener("click", () => submitAnswer(getButtonAction(el.yesActionBtn)));
-    el.callActionBtn.addEventListener("click", () => submitAnswer(getButtonAction(el.callActionBtn)));
-    el.noActionBtn.addEventListener("click", () => submitAnswer(getButtonAction(el.noActionBtn)));
-    el.whyBtn.addEventListener("click", toggleWhyLine);
-    el.nextBtn.addEventListener("click", () => nextQuestion());
-
-    el.openSettingsBtn.addEventListener("click", openSettings);
-    el.openSettingsBtnAlt.addEventListener("click", openSettings);
-    el.closeSettingsBtn.addEventListener("click", closeSettings);
-
-    el.settingsModal.addEventListener("click", (evt) => {
-      if (evt.target === el.settingsModal) {
-        closeSettings();
-      }
-    });
-
-    el.resetStatsBtn.addEventListener("click", () => {
-      if (!window.confirm("Reset all trainer stats?")) {
-        return;
-      }
-      stats = defaultStats();
-      saveStats();
-      renderStats();
-      showNotice("Stats reset.");
-    });
-  }
-
-  function setMode(mode) {
-    if (settings.mode === mode) {
-      return;
-    }
-    settings.mode = mode;
-    saveSettings();
-    renderModeButtons();
-    setActionLabelsForMode(mode);
-    nextQuestion();
-  }
-
-  function renderModeButtons() {
-    const isRfi = settings.mode === MODES.RFI;
-    const isThreeBet = settings.mode === MODES.THREE_BET;
-    const isVsRfi = settings.mode === MODES.VS_RFI;
-
-    el.modeRfiBtn.classList.toggle("active", isRfi);
-    el.modeThreeBetBtn.classList.toggle("active", isThreeBet);
-    el.modeVsRfiBtn.classList.toggle("active", isVsRfi);
-
-    el.modeRfiBtn.setAttribute("aria-pressed", String(isRfi));
-    el.modeThreeBetBtn.setAttribute("aria-pressed", String(isThreeBet));
-    el.modeVsRfiBtn.setAttribute("aria-pressed", String(isVsRfi));
-  }
-
-  function openSettings() {
-    el.settingsModal.classList.remove("hidden");
-    el.settingsModal.setAttribute("aria-hidden", "false");
-    if (!storageAvailable) {
-      showNotice("Local storage unavailable. Settings and stats are session-only.");
-    }
-  }
-
-  function closeSettings() {
-    el.settingsModal.classList.add("hidden");
-    el.settingsModal.setAttribute("aria-hidden", "true");
-  }
-
-  function buildSettingsUI() {
-    buildToggleGroup({
-      grid: el.rfiToggleGrid,
-      values: RFI_POSITIONS,
-      selected: settings.enabledRfiPositions,
-      settingKey: "enabledRfiPositions",
-      itemLabel: (value) => value
-    });
-
-    buildToggleGroup({
-      grid: el.threeBetToggleGrid,
-      values: THREE_BET_BUCKETS,
-      selected: settings.enabledThreeBetBuckets,
-      settingKey: "enabledThreeBetBuckets",
-      itemLabel: (value) => "vs " + value
-    });
-
-    buildRfiSamplingGrid();
-    buildThreeBetSamplingGrid();
-    buildVsRfiSamplingGrid();
-    buildVsRfiSpotGrid();
-  }
-
-  function buildRfiSamplingGrid() {
-    const options = [
-      { value: RFI_SAMPLING_MODES.UNIFORM_169, label: "Uniform (169)" },
-      { value: RFI_SAMPLING_MODES.BORDERLINE_HEAVY, label: "Borderline-heavy (balanced mix)" }
-    ];
-
-    el.rfiSamplingGrid.textContent = "";
-    options.forEach((option) => {
-      const id = "rfiSampling_" + option.value;
-      const row = document.createElement("label");
-      row.className = "radio-row";
-      row.setAttribute("for", id);
-
-      const input = document.createElement("input");
-      input.type = "radio";
-      input.name = "rfiSamplingMode";
-      input.id = id;
-      input.value = option.value;
-      input.checked = settings.rfiSamplingMode === option.value;
-
-      const text = document.createElement("span");
-      text.textContent = option.label;
-
-      input.addEventListener("change", () => {
-        if (!input.checked || settings.rfiSamplingMode === option.value) {
-          return;
-        }
-        settings.rfiSamplingMode = option.value;
-        saveSettings();
-        if (settings.mode === MODES.RFI) {
-          nextQuestion();
-        }
-      });
-
-      row.append(input, text);
-      el.rfiSamplingGrid.appendChild(row);
-    });
-  }
-
-  function buildThreeBetSamplingGrid() {
-    const options = [
-      { value: THREEBET_SAMPLING_MODES.UNIFORM_169, label: "Uniform (169)" },
-      { value: THREEBET_SAMPLING_MODES.PLAUSIBLE_ONLY, label: "Plausible only" },
-      { value: THREEBET_SAMPLING_MODES.BORDERLINE_HEAVY, label: "Borderline-heavy (balanced mix)" }
-    ];
-
-    el.threeBetSamplingGrid.textContent = "";
-    options.forEach((option, index) => {
-      const id = "threeBetSampling_" + option.value;
-      const row = document.createElement("label");
-      row.className = "radio-row";
-      row.setAttribute("for", id);
-
-      const input = document.createElement("input");
-      input.type = "radio";
-      input.name = "threeBetSamplingMode";
-      input.id = id;
-      input.value = option.value;
-      input.checked = settings.threeBetSamplingMode === option.value;
-
-      const text = document.createElement("span");
-      text.textContent = option.label;
-
-      input.addEventListener("change", () => {
-        if (!input.checked || settings.threeBetSamplingMode === option.value) {
-          return;
-        }
-        settings.threeBetSamplingMode = option.value;
-        saveSettings();
-        if (settings.mode === MODES.THREE_BET) {
-          nextQuestion();
-        }
-      });
-
-      row.append(input, text);
-      el.threeBetSamplingGrid.appendChild(row);
-    });
-  }
-
-  function buildVsRfiSamplingGrid() {
-    const options = [
-      { value: VS_RFI_SAMPLING_MODES.UNIFORM_169, label: "Uniform (1326 combos)" },
-      { value: VS_RFI_SAMPLING_MODES.BORDERLINE_HEAVY, label: "Borderline-heavy (balanced mix)" }
-    ];
-
-    el.vsRfiSamplingGrid.textContent = "";
-    options.forEach((option) => {
-      const id = "vsRfiSampling_" + option.value;
-      const row = document.createElement("label");
-      row.className = "radio-row";
-      row.setAttribute("for", id);
-
-      const input = document.createElement("input");
-      input.type = "radio";
-      input.name = "vsRfiSamplingMode";
-      input.id = id;
-      input.value = option.value;
-      input.checked = settings.vsRfiSamplingMode === option.value;
-
-      const text = document.createElement("span");
-      text.textContent = option.label;
-
-      input.addEventListener("change", () => {
-        if (!input.checked || settings.vsRfiSamplingMode === option.value) {
-          return;
-        }
-        settings.vsRfiSamplingMode = option.value;
-        saveSettings();
-        if (settings.mode === MODES.VS_RFI) {
-          nextQuestion();
-        }
-      });
-
-      row.append(input, text);
-      el.vsRfiSamplingGrid.appendChild(row);
-    });
-  }
-
-  function buildVsRfiSpotGrid() {
-    const options = [
-      { value: VS_RFI_SPOT_MODES.OPENER_BALANCED, label: "Opener-balanced (Recommended)" },
-      { value: VS_RFI_SPOT_MODES.BUCKET_BALANCED, label: "Bucket-balanced (legacy)" }
-    ];
-
-    el.vsRfiSpotGrid.textContent = "";
-    options.forEach((option) => {
-      const id = "vsRfiSpot_" + option.value;
-      const row = document.createElement("label");
-      row.className = "radio-row";
-      row.setAttribute("for", id);
-
-      const input = document.createElement("input");
-      input.type = "radio";
-      input.name = "vsRfiSpotMode";
-      input.id = id;
-      input.value = option.value;
-      input.checked = settings.vsRfiSpotMode === option.value;
-
-      const text = document.createElement("span");
-      text.textContent = option.label;
-
-      input.addEventListener("change", () => {
-        if (!input.checked || settings.vsRfiSpotMode === option.value) {
-          return;
-        }
-        settings.vsRfiSpotMode = option.value;
-        saveSettings();
-        if (settings.mode === MODES.VS_RFI) {
-          nextQuestion();
-        }
-      });
-
-      row.append(input, text);
-      el.vsRfiSpotGrid.appendChild(row);
-    });
-  }
-
-  function buildToggleGroup(args) {
-    const { grid, values, selected, settingKey, itemLabel } = args;
-    grid.textContent = "";
-    const selectedSet = new Set(selected);
-
-    values.forEach((value) => {
-      const id = settingKey + "_" + value;
-      const row = document.createElement("label");
-      row.className = "check-row";
-      row.setAttribute("for", id);
-
-      const input = document.createElement("input");
-      input.type = "checkbox";
-      input.id = id;
-      input.value = value;
-      input.checked = selectedSet.has(value);
-
-      const text = document.createElement("span");
-      text.textContent = itemLabel(value);
-
-      input.addEventListener("change", () => {
-        const nextValues = settings[settingKey].slice();
-        const idx = nextValues.indexOf(value);
-
-        if (input.checked && idx === -1) {
-          nextValues.push(value);
-        } else if (!input.checked && idx !== -1) {
-          nextValues.splice(idx, 1);
-        }
-
-        // Keep one spot active so question generation always has a source.
-        if (nextValues.length === 0) {
-          input.checked = true;
-          showNotice("Keep at least one option enabled.");
-          return;
-        }
-
-        settings[settingKey] = values.filter((v) => nextValues.includes(v));
-        saveSettings();
-
-        if (
-          (settingKey === "enabledRfiPositions" && settings.mode === MODES.RFI) ||
-          (settingKey === "enabledThreeBetBuckets" &&
-            (settings.mode === MODES.THREE_BET || settings.mode === MODES.VS_RFI))
-        ) {
-          nextQuestion();
-        }
-      });
-
-      row.append(input, text);
-      grid.appendChild(row);
-    });
-  }
-
-  function showNotice(text) {
-    el.settingsNotice.textContent = text;
-    window.clearTimeout(showNotice.timerRef);
-    showNotice.timerRef = window.setTimeout(() => {
-      el.settingsNotice.textContent = "";
-    }, 1800);
-  }
-
-  function nextQuestion() {
-    currentQuestion = generateQuestion(settings.mode);
-    whyVisible = false;
-    renderQuestion();
-  }
-
-  function renderQuestion() {
-    const mode = currentQuestion.mode;
-    if (mode === MODES.VS_RFI) {
-      el.spotLine.textContent = "vs Open - " + currentQuestion.openerPosition + " opens, Hero " + currentQuestion.heroPosition;
-    } else {
-      el.spotLine.textContent = SPOT_LABELS[mode] + currentQuestion.context;
-    }
-
-    if (mode === MODES.RFI) {
-      el.samplingLine.textContent = "Sampling: " + RFI_SAMPLING_LABELS[settings.rfiSamplingMode];
-      el.samplingLine.classList.remove("hidden");
-    } else if (mode === MODES.THREE_BET) {
-      el.samplingLine.textContent = "Sampling: " + THREEBET_SAMPLING_LABELS[settings.threeBetSamplingMode];
-      el.samplingLine.classList.remove("hidden");
-    } else if (mode === MODES.VS_RFI) {
-      el.samplingLine.textContent =
-        "Sampling: " + VS_RFI_SAMPLING_LABELS[settings.vsRfiSamplingMode] +
-        " | Spread: " + VS_RFI_SPOT_LABELS[settings.vsRfiSpotMode];
-      el.samplingLine.classList.remove("hidden");
-    } else {
-      el.samplingLine.classList.add("hidden");
-      el.samplingLine.textContent = "";
-    }
-
-    el.handLine.textContent = currentQuestion.handClass;
-    setActionLabelsForMode(mode);
-    el.yesActionBtn.disabled = false;
-    el.callActionBtn.disabled = false;
-    el.noActionBtn.disabled = false;
-
-    el.feedbackBox.className = "feedback hidden";
-    el.resultLine.textContent = "";
-    el.detailLine.textContent = "";
-    el.whyBtn.textContent = "Why?";
-    el.whyBtn.classList.add("hidden");
-    el.whyLine.textContent = "";
-    el.whyLine.classList.add("hidden");
-    el.nextBtn.classList.add("hidden");
-  }
-
-  function submitAnswer(takeAction) {
-    if (!currentQuestion || currentQuestion.answered || !takeAction) {
-      return;
-    }
-
-    currentQuestion.answered = true;
-    const mode = currentQuestion.mode;
-
-    const wasCorrect = gradeQuestion(currentQuestion, takeAction);
-    const rightAction = currentQuestion.correctAction;
-    const chosenAction = takeAction;
-    const contextKey = currentQuestion.statsContextKey;
-
-    stats.total += 1;
-    if (wasCorrect) {
-      stats.correct += 1;
-    }
-
-    if (!stats.byContext[contextKey]) {
-      stats.byContext[contextKey] = { total: 0, correct: 0 };
-    }
-    stats.byContext[contextKey].total += 1;
-    if (wasCorrect) {
-      stats.byContext[contextKey].correct += 1;
-    }
-
-    if (!wasCorrect) {
-      const hand = currentQuestion.handClass;
-      stats.misses[hand] = (stats.misses[hand] || 0) + 1;
-    }
-
-    saveStats();
-    renderStats();
-
-    el.yesActionBtn.disabled = true;
-    el.callActionBtn.disabled = true;
-    el.noActionBtn.disabled = true;
-
-    const readableContext = buildReadableContext(currentQuestion);
-
-    el.feedbackBox.className = "feedback " + (wasCorrect ? "feedback-ok" : "feedback-bad");
-    el.resultLine.textContent = wasCorrect ? "Correct." : "Wrong.";
-    el.detailLine.textContent =
-      currentQuestion.handClass + " is " + rightAction + " in " + readableContext + "." +
-      (wasCorrect ? "" : " You chose " + chosenAction + ".");
-
-    el.whyBtn.classList.remove("hidden");
-    el.whyLine.classList.add("hidden");
-    el.whyLine.textContent = "";
-    whyVisible = false;
-    el.nextBtn.classList.remove("hidden");
-  }
-
-  function toggleWhyLine() {
-    if (!currentQuestion || !currentQuestion.answered) {
-      return;
-    }
-
-    whyVisible = !whyVisible;
-    if (!whyVisible) {
-      el.whyBtn.textContent = "Why?";
-      el.whyLine.classList.add("hidden");
-      return;
-    }
-
-    el.whyBtn.textContent = "Hide Why";
-    el.whyLine.textContent = getWhyText(currentQuestion);
-    el.whyLine.classList.remove("hidden");
-  }
-
-  function renderStats() {
-    el.attemptsValue.textContent = String(stats.total);
-    el.correctValue.textContent = String(stats.correct);
-    el.accuracyValue.textContent = formatPercent(stats.correct, stats.total);
-
-    renderContextStatList(el.rfiStatsList, MODES.RFI, RFI_POSITIONS);
-    renderContextStatList(el.threeBetStatsList, MODES.THREE_BET, THREE_BET_BUCKETS);
-    renderVsRfiStatList();
-    renderMissList();
-  }
-
-  function renderVsRfiStatList() {
-    el.vsRfiStatsList.textContent = "";
-    VS_RFI_CONTEXTS.forEach((context) => {
-      const bucket = stats.byContext[context.key] || { total: 0, correct: 0 };
-
-      const li = document.createElement("li");
-      li.className = "stat-row";
-
-      const left = document.createElement("span");
-      left.textContent = context.label;
-
-      const right = document.createElement("span");
-      right.textContent = bucket.correct + "/" + bucket.total + " (" + formatPercent(bucket.correct, bucket.total) + ")";
-
-      li.append(left, right);
-      el.vsRfiStatsList.appendChild(li);
-    });
-  }
-
-  function renderContextStatList(listEl, mode, contexts) {
-    listEl.textContent = "";
-    contexts.forEach((context) => {
-      const key = mode + ":" + context;
-      const bucket = stats.byContext[key] || { total: 0, correct: 0 };
-
-      const li = document.createElement("li");
-      li.className = "stat-row";
-
-      const left = document.createElement("span");
-      left.textContent = context;
-
-      const right = document.createElement("span");
-      right.textContent = bucket.correct + "/" + bucket.total + " (" + formatPercent(bucket.correct, bucket.total) + ")";
-
-      li.append(left, right);
-      listEl.appendChild(li);
-    });
-  }
-
-  function renderMissList() {
-    const misses = Object.entries(stats.misses)
-      .filter((entry) => HAND_CLASS_SET.has(entry[0]) && Number.isFinite(entry[1]) && entry[1] > 0)
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-      .slice(0, 10);
-
-    el.missList.textContent = "";
-    if (misses.length === 0) {
-      const li = document.createElement("li");
-      li.className = "empty-row";
-      li.textContent = "No misses yet.";
-      el.missList.appendChild(li);
-      return;
-    }
-
-    misses.forEach(([hand, count]) => {
-      const li = document.createElement("li");
-      li.className = "miss-row";
-
-      const handSpan = document.createElement("span");
-      handSpan.textContent = hand;
-
-      const countSpan = document.createElement("span");
-      countSpan.textContent = String(count);
-
-      li.append(handSpan, countSpan);
-      el.missList.appendChild(li);
-    });
-  }
-
-  function formatPercent(correct, total) {
-    if (!total) {
-      return "--";
-    }
-    return Math.round((correct / total) * 100) + "%";
-  }
-
-  function randomPick(arr) {
-    return arr[Math.floor(Math.random() * arr.length)];
-  }
-
-  function shuffleCopy(values) {
-    const out = values.slice();
-    for (let i = out.length - 1; i > 0; i -= 1) {
-      const j = Math.floor(Math.random() * (i + 1));
-      const tmp = out[i];
-      out[i] = out[j];
-      out[j] = tmp;
-    }
-    return out;
-  }
-
-  function drawEvenFromArray(key, values, signature) {
-    if (!Array.isArray(values) || values.length === 0) {
-      throw new Error("Cannot sample from empty array for key: " + key);
-    }
-
-    const state = evenSamplerState[key] || { signature: "", remaining: [] };
-    if (state.signature !== signature || state.remaining.length === 0) {
-      state.signature = signature;
-      state.remaining = shuffleCopy(values);
-      evenSamplerState[key] = state;
-    }
-    return state.remaining.pop();
-  }
-
-  function drawWeightedToken(key, weightedOptions, signature) {
-    const positive = weightedOptions.filter((option) => option.weight > 0);
-    if (!positive.length) {
-      throw new Error("Cannot sample weighted token with no positive-weight options for key: " + key);
-    }
-
-    const state = evenSamplerState[key] || { signature: "", remaining: [] };
-    if (state.signature !== signature || state.remaining.length === 0) {
-      state.signature = signature;
-      state.remaining = shuffleCopy(buildWeightedTokenDeck(positive));
-      evenSamplerState[key] = state;
-    }
-    return state.remaining.pop();
-  }
-
-  function buildWeightedTokenDeck(weightedOptions) {
-    const totalWeight = weightedOptions.reduce((sum, option) => sum + option.weight, 0);
-    if (totalWeight <= 0) {
-      return weightedOptions.map((option) => option.id);
-    }
-
-    const scaled = weightedOptions.map((option) => {
-      const target = (option.weight / totalWeight) * BORDERLINE_MIX_BLOCK_SIZE;
-      return {
-        id: option.id,
-        count: Math.floor(target),
-        remainder: target - Math.floor(target)
-      };
-    });
-
-    let assigned = scaled.reduce((sum, option) => sum + option.count, 0);
-    if (assigned < BORDERLINE_MIX_BLOCK_SIZE) {
-      const byRemainder = scaled.slice().sort((a, b) => b.remainder - a.remainder);
-      for (let i = 0; i < BORDERLINE_MIX_BLOCK_SIZE - assigned; i += 1) {
-        byRemainder[i % byRemainder.length].count += 1;
-      }
-      assigned = BORDERLINE_MIX_BLOCK_SIZE;
-    }
-
-    const deck = [];
-    scaled.forEach((option) => {
-      for (let i = 0; i < option.count; i += 1) {
-        deck.push(option.id);
-      }
-    });
-
-    if (!deck.length && weightedOptions.length) {
-      return weightedOptions.map((option) => option.id);
-    }
-
-    return deck;
-  }
-
-  function hasDebugFlag() {
-    try {
-      if (typeof URLSearchParams !== "undefined") {
-        return new URLSearchParams(window.location.search).get("debug") === "1";
-      }
-    } catch (err) {
-      // Fallback below.
-    }
-    return /(?:^|[?&])debug=1(?:&|$)/.test(String(window.location.search || ""));
-  }
-
-  function buildRankIndex() {
-    const indexMap = {};
-    for (let i = 0; i < RANKS.length; i += 1) {
-      indexMap[RANKS[i]] = i;
-    }
-    return indexMap;
-  }
-
-  function getEnabledContexts(mode) {
-    if (mode === MODES.RFI) {
-      return settings.enabledRfiPositions;
-    }
-    return settings.enabledThreeBetBuckets;
-  }
-
-  function generateQuestion(mode) {
-    if (mode === MODES.RFI) {
-      const context = drawEvenFromArray(
-        "context:RFI",
-        settings.enabledRfiPositions,
-        settings.enabledRfiPositions.join("|")
-      );
-      const handClass = sampleRfiHandClass(context, settings.rfiSamplingMode);
-      const correctAction = PARSED_RANGES[MODES.RFI][context].has(handClass) ? ACTIONS.OPEN : ACTIONS.FOLD;
-      return {
-        mode,
-        context,
-        handClass,
-        correctAction,
-        statsContextKey: mode + ":" + context,
-        answered: false
-      };
-    }
-
-    if (mode === MODES.THREE_BET) {
-      const context = drawEvenFromArray(
-        "context:THREE_BET",
-        settings.enabledThreeBetBuckets,
-        settings.enabledThreeBetBuckets.join("|")
-      );
-      const handClass = sampleThreeBetHandClass(context, settings.threeBetSamplingMode);
-      const correctAction = PARSED_RANGES[MODES.THREE_BET][context].has(handClass) ? ACTIONS.THREE_BET : ACTIONS.NOT_THREE_BET;
-      return {
-        mode,
-        context,
-        handClass,
-        correctAction,
-        statsContextKey: mode + ":" + context,
-        answered: false
-      };
-    }
-
-    return generateVsRfiQuestion();
-  }
-
-  function sampleRfiHandClass(position, samplingMode) {
-    if (samplingMode === RFI_SAMPLING_MODES.UNIFORM_169) {
-      return drawEvenFromArray("hands:RFI:UNIFORM_169", ALL_HAND_CLASSES, "ALL_HAND_CLASSES");
-    }
-
-    const groups = [
-      {
-        id: "OPEN",
-        weight: RFI_BORDERLINE_HEAVY_WEIGHTS.OPEN,
-        values: RFI_OPEN_ARR[position]
-      },
-      {
-        id: "BORDERLINE",
-        weight: RFI_BORDERLINE_HEAVY_WEIGHTS.BORDERLINE,
-        values: RFI_BORDERLINE_ARR[position]
-      },
-      {
-        id: "REST",
-        weight: RFI_BORDERLINE_HEAVY_WEIGHTS.REST,
-        values: RFI_PLAUSIBLE_REST_ARR[position]
-      }
-    ].filter((group) => group.values.length > 0);
-
-    if (!groups.length) {
-      return drawEvenFromArray(
-        "hands:RFI:FALLBACK:" + position,
-        ALL_HAND_CLASSES,
-        "ALL_HAND_CLASSES"
-      );
-    }
-
-    const mixKey = "mix:RFI:" + position;
-    const mixSignature = groups
-      .map((group) => group.id + ":" + group.values.length + ":" + group.weight)
-      .join("|");
-    const category = drawWeightedToken(
-      mixKey,
-      groups.map((group) => ({ id: group.id, weight: group.weight })),
-      mixSignature
-    );
-    const pickedGroup = groups.find((group) => group.id === category) || groups[0];
-    return drawEvenFromArray(
-      "hands:RFI:BORDERLINE_HEAVY:" + position + ":" + pickedGroup.id,
-      pickedGroup.values,
-      position + ":" + pickedGroup.id + ":" + pickedGroup.values.length
-    );
-  }
-
-  function generateVsRfiQuestion() {
-    const spotMode = settings.vsRfiSpotMode || VS_RFI_SPOT_MODES.OPENER_BALANCED;
-    const enabledBuckets = settings.enabledThreeBetBuckets;
-    let bucket;
-    let openerPosition;
-
-    if (spotMode === VS_RFI_SPOT_MODES.BUCKET_BALANCED) {
-      bucket = drawEvenFromArray(
-        "context:VS_RFI_BUCKET",
-        enabledBuckets,
-        enabledBuckets.join("|")
-      );
-      openerPosition = drawEvenFromArray(
-        "context:VS_RFI_OPENER_BY_BUCKET:" + bucket,
-        VS_RFI_OPENERS_BY_BUCKET[bucket],
-        bucket + ":" + VS_RFI_OPENERS_BY_BUCKET[bucket].join("|")
-      );
-    } else {
-      const enabledOpeners = getEnabledVsRfiOpeners();
-      openerPosition = drawEvenFromArray(
-        "context:VS_RFI_OPENER_GLOBAL",
-        enabledOpeners,
-        enabledBuckets.join("|") + "::" + enabledOpeners.join("|")
-      );
-      bucket = OPENER_BUCKET_BY_POSITION[openerPosition];
-    }
-
-    const heroPosition = drawEvenFromArray(
-      "context:VS_RFI_HERO:" + openerPosition,
-      VS_RFI_HEROES_BY_OPENER[openerPosition],
-      openerPosition + ":" + VS_RFI_HEROES_BY_OPENER[openerPosition].join("|")
-    );
-    const handClass = sampleVsRfiHandClass(bucket, settings.vsRfiSamplingMode);
-    const correctAction = getVsRfiCorrectAction(bucket, handClass);
-
-    return {
-      mode: MODES.VS_RFI,
-      context: bucket,
-      openerBucket: bucket,
-      openerPosition,
-      heroPosition,
-      handClass,
-      correctAction,
-      statsContextKey: MODES.VS_RFI + ":" + bucket + ":" + heroPosition,
-      answered: false
-    };
-  }
-
-  function getEnabledVsRfiOpeners() {
-    const enabledBucketSet = new Set(settings.enabledThreeBetBuckets);
-    return VS_RFI_OPENERS.filter((openerPosition) => {
-      return enabledBucketSet.has(OPENER_BUCKET_BY_POSITION[openerPosition]);
-    });
-  }
-
-  function sampleThreeBetHandClass(bucket, samplingMode) {
-    if (samplingMode === THREEBET_SAMPLING_MODES.UNIFORM_169) {
-      return drawEvenFromArray("hands:THREE_BET:UNIFORM_169", ALL_HAND_CLASSES, "ALL_HAND_CLASSES");
-    }
-
-    if (samplingMode === THREEBET_SAMPLING_MODES.PLAUSIBLE_ONLY) {
-      return drawEvenFromArray(
-        "hands:THREE_BET:PLAUSIBLE_ONLY:" + bucket,
-        PLAUSIBLE_ARR[bucket],
-        bucket + ":" + PLAUSIBLE_ARR[bucket].length
-      );
-    }
-
-    const groups = [
-      {
-        id: "THREE_BET",
-        weight: THREEBET_BORDERLINE_HEAVY_WEIGHTS.THREE_BET,
-        values: THREEBET_ARR[bucket]
-      },
-      {
-        id: "BORDERLINE",
-        weight: THREEBET_BORDERLINE_HEAVY_WEIGHTS.BORDERLINE,
-        values: BORDERLINE_ARR[bucket]
-      },
-      {
-        id: "REST",
-        weight: THREEBET_BORDERLINE_HEAVY_WEIGHTS.REST,
-        values: PLAUSIBLE_REST_ARR[bucket]
-      }
-    ].filter((group) => group.values.length > 0);
-
-    if (!groups.length) {
-      return drawEvenFromArray(
-        "hands:THREE_BET:FALLBACK:" + bucket,
-        PLAUSIBLE_ARR[bucket],
-        bucket + ":" + PLAUSIBLE_ARR[bucket].length
-      );
-    }
-
-    const mixKey = "mix:THREE_BET:" + bucket;
-    const mixSignature = groups
-      .map((group) => group.id + ":" + group.values.length + ":" + group.weight)
-      .join("|");
-    const category = drawWeightedToken(
-      mixKey,
-      groups.map((group) => ({ id: group.id, weight: group.weight })),
-      mixSignature
-    );
-    const pickedGroup = groups.find((group) => group.id === category) || groups[0];
-    return drawEvenFromArray(
-      "hands:THREE_BET:BORDERLINE_HEAVY:" + bucket + ":" + pickedGroup.id,
-      pickedGroup.values,
-      bucket + ":" + pickedGroup.id + ":" + pickedGroup.values.length
-    );
-  }
-
-  function sampleVsRfiHandClass(bucket, samplingMode) {
-    if (samplingMode === VS_RFI_SAMPLING_MODES.UNIFORM_169) {
-      return drawEvenFromArray("hands:VS_RFI:UNIFORM_1326", ALL_COMBOS, "ALL_COMBOS");
-    }
-
-    const groups = [
-      {
-        id: "THREE_BET",
-        weight: VS_RFI_BORDERLINE_HEAVY_WEIGHTS.THREE_BET,
-        values: VS_RFI_THREEBET_COMBOS[bucket]
-      },
-      {
-        id: "CALL",
-        weight: VS_RFI_BORDERLINE_HEAVY_WEIGHTS.CALL,
-        values: VS_RFI_CALL_COMBOS[bucket]
-      },
-      {
-        id: "REST",
-        weight: VS_RFI_BORDERLINE_HEAVY_WEIGHTS.REST,
-        values: VS_RFI_REST_COMBOS[bucket]
-      }
-    ].filter((group) => group.values.length > 0);
-
-    if (!groups.length) {
-      return drawEvenFromArray("hands:VS_RFI:FALLBACK", ALL_COMBOS, "ALL_COMBOS");
-    }
-
-    const mixKey = "mix:VS_RFI:" + bucket;
-    const mixSignature = groups
-      .map((group) => group.id + ":" + group.values.length + ":" + group.weight)
-      .join("|");
-    const category = drawWeightedToken(
-      mixKey,
-      groups.map((group) => ({ id: group.id, weight: group.weight })),
-      mixSignature
-    );
-    const pickedGroup = groups.find((group) => group.id === category) || groups[0];
-    return drawEvenFromArray(
-      "hands:VS_RFI:BORDERLINE_HEAVY:" + bucket + ":" + pickedGroup.id,
-      pickedGroup.values,
-      bucket + ":" + pickedGroup.id + ":" + pickedGroup.values.length
-    );
-  }
-
-  function getVsRfiCorrectAction(bucket, handClass) {
-    if (THREEBET_SET[bucket].has(handClass)) {
-      return ACTIONS.THREE_BET;
-    }
-    if (VS_RFI_CALL_SET[bucket].has(handClass)) {
-      return ACTIONS.CALL;
-    }
-    return ACTIONS.FOLD;
-  }
-
-  function gradeQuestion(question, takeAction) {
-    return question.correctAction === takeAction;
-  }
-
-  function setActionLabelsForMode(mode) {
-    el.actionsRow.classList.toggle("actions-three", mode === MODES.VS_RFI);
-
-    if (mode === MODES.VS_RFI) {
-      setActionButton(el.noActionBtn, ACTIONS.FOLD, true);
-      setActionButton(el.callActionBtn, ACTIONS.CALL, true);
-      setActionButton(el.yesActionBtn, ACTIONS.THREE_BET, true);
-      return;
-    }
-
-    if (mode === MODES.RFI) {
-      setActionButton(el.yesActionBtn, ACTIONS.OPEN, true);
-      setActionButton(el.noActionBtn, ACTIONS.FOLD, true);
-      setActionButton(el.callActionBtn, "", false);
-      return;
-    }
-
-    setActionButton(el.yesActionBtn, ACTIONS.THREE_BET, true);
-    setActionButton(el.noActionBtn, ACTIONS.NOT_THREE_BET, true);
-    setActionButton(el.callActionBtn, "", false);
-  }
-
-  function setActionButton(button, label, visible) {
-    button.classList.toggle("hidden", !visible);
-    if (!visible) {
-      button._action = "";
-      button.setAttribute("data-action", "");
-      return;
-    }
-    button.textContent = label;
-    button._action = label;
-    button.setAttribute("data-action", label);
-  }
-
-  function getButtonAction(button) {
-    return typeof button._action === "string" ? button._action : "";
-  }
-
-  function buildReadableContext(question) {
-    if (question.mode === MODES.RFI) {
-      return "RFI " + question.context;
-    }
-    if (question.mode === MODES.THREE_BET) {
-      return "3-Bet vs " + question.context;
-    }
-    return "vs Open (" + question.openerPosition + " -> " + question.heroPosition + ", bucket " + question.openerBucket + ")";
-  }
-
-  function getWhyText(question) {
-    if (question.mode !== MODES.VS_RFI) {
-      return CONTEXT_RANGE_TEXT[question.mode][question.context];
-    }
-
-    return (
-      "Opener: " + question.openerPosition +
-      " | Hero: " + question.heroPosition +
-      " | Bucket: vs " + question.openerBucket +
-      " | 3-bet: " + RANGE_SOURCE[MODES.THREE_BET][question.openerBucket] +
-      " | Call: " + VS_RFI_CALL_RANGE_SOURCE[question.openerBucket]
-    );
-  }
-
-  function buildContextRangeText() {
-    const output = {
-      [MODES.RFI]: {},
-      [MODES.THREE_BET]: {},
-      [MODES.VS_RFI]: {}
-    };
-
-    Object.entries(RANGE_SOURCE[MODES.RFI]).forEach(([position, text]) => {
-      output[MODES.RFI][position] = position + ": " + text;
-    });
-
-    Object.entries(RANGE_SOURCE[MODES.THREE_BET]).forEach(([bucket, text]) => {
-      const openerList = THREE_BET_BUCKET_OPENERS[bucket].join("/");
-      output[MODES.THREE_BET][bucket] = "3-bet bucket: vs " + bucket + " (" + openerList + ") | Range: " + text;
-      output[MODES.VS_RFI][bucket] = "3-bet: " + text + " | call: " + VS_RFI_CALL_RANGE_SOURCE[bucket];
-    });
-
-    return output;
-  }
-
-  function buildVsRfiCallSets() {
-    const callSets = {};
-    THREE_BET_BUCKETS.forEach((bucket) => {
-      callSets[bucket] = parseRangeList(VS_RFI_CALL_RANGE_SOURCE[bucket]);
-    });
-    return callSets;
-  }
-
-  function buildVsRfiSpots() {
-    const spots = [];
-    VS_RFI_OPENERS.forEach((openerPosition) => {
-      const openerIndex = POSITION_ORDER_9H.indexOf(openerPosition);
-      const openerBucket = OPENER_BUCKET_BY_POSITION[openerPosition];
-      for (let i = openerIndex + 1; i < POSITION_ORDER_9H.length; i += 1) {
-        const heroPosition = POSITION_ORDER_9H[i];
-        spots.push({ openerPosition, openerBucket, heroPosition });
-      }
-    });
-    return spots;
-  }
-
-  function buildVsRfiOpenersByBucket() {
-    const byBucket = {};
-    THREE_BET_BUCKETS.forEach((bucket) => {
-      byBucket[bucket] = [];
-    });
-
-    VS_RFI_OPENERS.forEach((openerPosition) => {
-      const bucket = OPENER_BUCKET_BY_POSITION[openerPosition];
-      byBucket[bucket].push(openerPosition);
-    });
-
-    return byBucket;
-  }
-
-  function buildVsRfiHeroesByOpener() {
-    const byOpener = {};
-    VS_RFI_OPENERS.forEach((openerPosition) => {
-      const openerIndex = POSITION_ORDER_9H.indexOf(openerPosition);
-      byOpener[openerPosition] = POSITION_ORDER_9H.slice(openerIndex + 1);
-    });
-    return byOpener;
-  }
-
-  function buildVsRfiSpotsByBucket() {
-    const byBucket = {};
-    THREE_BET_BUCKETS.forEach((bucket) => {
-      byBucket[bucket] = VS_RFI_SPOTS.filter((spot) => spot.openerBucket === bucket);
-    });
-    return byBucket;
-  }
-
-  function buildVsRfiContexts() {
-    const contexts = [];
-    const contextSet = new Set();
-
-    VS_RFI_SPOTS.forEach((spot) => {
-      const key = MODES.VS_RFI + ":" + spot.openerBucket + ":" + spot.heroPosition;
-      if (contextSet.has(key)) {
-        return;
-      }
-      contextSet.add(key);
-      contexts.push({
-        key,
-        bucket: spot.openerBucket,
-        heroPosition: spot.heroPosition,
-        label: "vs " + spot.openerBucket + " -> " + spot.heroPosition
-      });
-    });
-
-    return contexts;
-  }
-
-  function buildBorderlineSets() {
-    return {
-      EP: parseRangeList("JJ, TT, AQs, AQo, KQs"),
-      MP: parseRangeList("TT, 99, AQo, KQs, AJs"),
-      CO: parseRangeList("99, 88, ATo, KJo, QJo, KJs"),
-      BTN: parseRangeList("99, 88, ATo, KJo, QJo, KJs")
-    };
-  }
-
-  function buildRfiBorderlineSets() {
-    return {
-      UTG: parseRangeList("99, ATs, KJs, QJs, AJo, KQo"),
-      UTG1: parseRangeList("99, ATs, KJs, QJs, AJo, KQo"),
-      MP1: parseRangeList("77, A9s, KTs, QTs, T9s, ATo, KJo, QJo"),
-      MP2: parseRangeList("77, A9s, KTs, QTs, T9s, ATo, KJo, QJo"),
-      MP3: parseRangeList("77, A9s, KTs, QTs, T9s, ATo, KJo, QJo"),
-      CO: parseRangeList("66, A8s, K9s, Q9s, J9s, 87s, 76s, A9o, KJo, QJo"),
-      BTN: parseRangeList("55, A7s, K8s, Q8s, J8s, T7s, 96s, 75s, 54s, A9o, KTo, QTo, JTo"),
-      SB: parseRangeList("44, A6s, K7s, Q8s, J7s, T7s, 96s, 64s, 53s, A8o, K9o, Q9o, J9o")
-    };
-  }
-
-  function buildRfiPlausiblePools() {
-    const pools = {};
-    RFI_POSITIONS.forEach((position) => {
-      const pool = new Set();
-      PARSED_RANGES[MODES.RFI][position].forEach((handClass) => pool.add(handClass));
-      RFI_BORDERLINE_SET[position].forEach((handClass) => pool.add(handClass));
-      PLAUSIBLE_CALL_SET.forEach((handClass) => pool.add(handClass));
-      pools[position] = pool;
-    });
-    return pools;
-  }
-
-  function buildPlausiblePools() {
-    const pools = {};
-    THREE_BET_BUCKETS.forEach((bucket) => {
-      const pool = new Set();
-      THREEBET_SET[bucket].forEach((handClass) => pool.add(handClass));
-      BORDERLINE_SET[bucket].forEach((handClass) => pool.add(handClass));
-      PLAUSIBLE_CALL_SET.forEach((handClass) => pool.add(handClass));
-      pools[bucket] = pool;
-    });
-    return pools;
-  }
-
-  function buildVsRfiPlausiblePools() {
-    const pools = {};
-    THREE_BET_BUCKETS.forEach((bucket) => {
-      const pool = new Set();
-      THREEBET_SET[bucket].forEach((handClass) => pool.add(handClass));
-      VS_RFI_CALL_SET[bucket].forEach((handClass) => pool.add(handClass));
-      PLAUSIBLE_CALL_SET.forEach((handClass) => pool.add(handClass));
-      pools[bucket] = pool;
-    });
-    return pools;
-  }
-
-  function precomputeThreeBetPoolArrays() {
-    THREE_BET_BUCKETS.forEach((bucket) => {
-      THREEBET_ARR[bucket] = setToHandClassOrderArray(THREEBET_SET[bucket]);
-      BORDERLINE_ARR[bucket] = setToHandClassOrderArray(BORDERLINE_SET[bucket]);
-      PLAUSIBLE_ARR[bucket] = setToHandClassOrderArray(PLAUSIBLE_POOL[bucket]);
-      PLAUSIBLE_REST_ARR[bucket] = PLAUSIBLE_ARR[bucket].filter((handClass) => {
-        return !THREEBET_SET[bucket].has(handClass) && !BORDERLINE_SET[bucket].has(handClass);
-      });
-    });
-  }
-
-  function precomputeRfiPoolArrays() {
-    RFI_POSITIONS.forEach((position) => {
-      RFI_OPEN_ARR[position] = setToHandClassOrderArray(PARSED_RANGES[MODES.RFI][position]);
-      RFI_BORDERLINE_ARR[position] = setToHandClassOrderArray(RFI_BORDERLINE_SET[position]);
-      RFI_PLAUSIBLE_ARR[position] = setToHandClassOrderArray(RFI_PLAUSIBLE_POOL[position]);
-      RFI_PLAUSIBLE_REST_ARR[position] = RFI_PLAUSIBLE_ARR[position].filter((handClass) => {
-        return !PARSED_RANGES[MODES.RFI][position].has(handClass) && !RFI_BORDERLINE_SET[position].has(handClass);
-      });
-    });
-  }
-
-  function precomputeVsRfiPoolArrays() {
-    THREE_BET_BUCKETS.forEach((bucket) => {
-      VS_RFI_CALL_ARR[bucket] = setToHandClassOrderArray(VS_RFI_CALL_SET[bucket]);
-      VS_RFI_PLAUSIBLE_ARR[bucket] = setToHandClassOrderArray(VS_RFI_PLAUSIBLE_POOL[bucket]);
-      VS_RFI_PLAUSIBLE_REST_ARR[bucket] = VS_RFI_PLAUSIBLE_ARR[bucket].filter((handClass) => {
-        return !THREEBET_SET[bucket].has(handClass) && !VS_RFI_CALL_SET[bucket].has(handClass);
-      });
-
-      const restSet = new Set(VS_RFI_PLAUSIBLE_REST_ARR[bucket]);
-      VS_RFI_THREEBET_COMBOS[bucket] = ALL_COMBOS.filter((handClass) => THREEBET_SET[bucket].has(handClass));
-      VS_RFI_CALL_COMBOS[bucket] = ALL_COMBOS.filter((handClass) => VS_RFI_CALL_SET[bucket].has(handClass));
-      VS_RFI_REST_COMBOS[bucket] = ALL_COMBOS.filter((handClass) => restSet.has(handClass));
-    });
-  }
-
-  function setToHandClassOrderArray(handSet) {
-    return ALL_HAND_CLASSES.filter((handClass) => handSet.has(handClass));
-  }
-
-  function logThreeBetPoolSizes() {
-    THREE_BET_BUCKETS.forEach((bucket) => {
-      console.log(
-        "[ThreeBetPools] " + bucket +
-        " 3bet=" + THREEBET_ARR[bucket].length +
-        " borderline=" + BORDERLINE_ARR[bucket].length +
-        " plausible=" + PLAUSIBLE_ARR[bucket].length +
-        " rest=" + PLAUSIBLE_REST_ARR[bucket].length
-      );
-    });
-  }
-
-  function logVsRfiPoolSizes() {
-    THREE_BET_BUCKETS.forEach((bucket) => {
-      console.log(
-        "[VsRfiPools] " + bucket +
-        " class:3bet=" + THREEBET_ARR[bucket].length +
-        " call=" + VS_RFI_CALL_ARR[bucket].length +
-        " plausible=" + VS_RFI_PLAUSIBLE_ARR[bucket].length +
-        " rest=" + VS_RFI_PLAUSIBLE_REST_ARR[bucket].length +
-        " | combos:3bet=" + VS_RFI_THREEBET_COMBOS[bucket].length +
-        " call=" + VS_RFI_CALL_COMBOS[bucket].length +
-        " rest=" + VS_RFI_REST_COMBOS[bucket].length
-      );
-    });
-  }
-
-  function runComboWeightSanity() {
-    const draws = 50000;
-    let aaCount = 0;
-    let kkCount = 0;
-
-    for (let i = 0; i < draws; i += 1) {
-      const handClass = randomPick(ALL_COMBOS);
-      if (handClass === "AA") {
-        aaCount += 1;
-      } else if (handClass === "KK") {
-        kkCount += 1;
-      }
-    }
-
-    const aaFreq = aaCount / draws;
-    const target = 6 / 1326;
-    console.log(
-      "[ComboSanity] draws=" + draws +
-      " AA=" + (aaFreq * 100).toFixed(3) + "% target=" + (target * 100).toFixed(3) +
-      "% KK=" + ((kkCount / draws) * 100).toFixed(3) + "%"
-    );
-  }
-
-  function buildAllHandClasses() {
-    const out = [];
-    for (let i = 0; i < RANKS.length; i += 1) {
-      out.push(RANKS[i] + RANKS[i]);
-      for (let j = i + 1; j < RANKS.length; j += 1) {
-        out.push(RANKS[i] + RANKS[j] + "s");
-        out.push(RANKS[i] + RANKS[j] + "o");
-      }
-    }
-
-    if (out.length !== 169) {
-      throw new Error("Hand class generation failed: expected 169, got " + out.length);
-    }
-    return out;
-  }
-
-  function buildAllCombos() {
-    const suits = ["c", "d", "h", "s"];
-    const cards = [];
-    const combos = [];
-
-    RANKS.forEach((rank) => {
-      suits.forEach((suit) => {
-        cards.push({ rank, suit });
-      });
-    });
-
-    for (let i = 0; i < cards.length; i += 1) {
-      for (let j = i + 1; j < cards.length; j += 1) {
-        const c1 = cards[i];
-        const c2 = cards[j];
-        combos.push(comboToHandClass(c1, c2));
-      }
-    }
-
-    if (combos.length !== 1326) {
-      throw new Error("Combo generation failed: expected 1326, got " + combos.length);
-    }
-    return combos;
-  }
-
-  function comboToHandClass(cardA, cardB) {
-    const idxA = RANK_INDEX[cardA.rank];
-    const idxB = RANK_INDEX[cardB.rank];
-    if (idxA === idxB) {
-      return cardA.rank + cardB.rank;
-    }
-
-    const highCard = idxA < idxB ? cardA : cardB;
-    const lowCard = idxA < idxB ? cardB : cardA;
-    const suitedness = highCard.suit === lowCard.suit ? "s" : "o";
-    return highCard.rank + lowCard.rank + suitedness;
-  }
-
-  function buildParsedRanges() {
-    const parsed = {
-      [MODES.RFI]: {},
-      [MODES.THREE_BET]: {}
-    };
-
-    Object.entries(RANGE_SOURCE[MODES.RFI]).forEach(([position, text]) => {
-      parsed[MODES.RFI][position] = parseRangeList(text);
-    });
-
-    Object.entries(RANGE_SOURCE[MODES.THREE_BET]).forEach(([bucket, text]) => {
-      parsed[MODES.THREE_BET][bucket] = parseRangeList(text);
-    });
-
-    return parsed;
-  }
-
-  function parseRangeList(text) {
-    const handSet = new Set();
-    text
-      .split(",")
-      .map((token) => token.trim())
-      .filter(Boolean)
-      .forEach((token) => {
-        const expanded = expandShorthandToken(token);
-        expanded.forEach((handClass) => handSet.add(handClass));
-      });
-    return handSet;
-  }
-
-  function expandShorthandToken(token) {
-    const clean = token.trim().toUpperCase();
-    const match = clean.match(/^([AKQJT2-9])([AKQJT2-9])([SO])?(\+)?$/);
-    if (!match) {
-      throw new Error("Invalid range token: " + token);
-    }
-
-    const r1 = match[1];
-    const r2 = match[2];
-    const suitedness = match[3] ? match[3].toLowerCase() : "";
-    const plus = Boolean(match[4]);
-    const i1 = RANK_INDEX[r1];
-    const i2 = RANK_INDEX[r2];
-    const out = [];
-
-    if (r1 === r2) {
-      if (suitedness) {
-        throw new Error("Pairs cannot include s/o suffix: " + token);
-      }
-      if (plus) {
-        for (let i = i1; i >= 0; i -= 1) {
-          out.push(RANKS[i] + RANKS[i]);
-        }
-      } else {
-        out.push(r1 + r2);
-      }
-      return out;
-    }
-
-    if (i1 >= i2) {
-      throw new Error("Token must be ordered high-to-low: " + token);
-    }
-
-    const pushCombo = (secondRank) => {
-      if (suitedness === "s" || suitedness === "o") {
-        out.push(r1 + secondRank + suitedness);
-      } else {
-        out.push(r1 + secondRank + "s");
-        out.push(r1 + secondRank + "o");
-      }
-    };
-
-    if (plus) {
-      for (let i = i2; i > i1; i -= 1) {
-        pushCombo(RANKS[i]);
-      }
-    } else {
-      pushCombo(r2);
-    }
-
-    return out;
-  }
-
-  function runParserSelfTest() {
-    const tests = [
-      ["TT+", ["TT", "JJ", "QQ", "KK", "AA"]],
-      ["77+", ["77", "88", "99", "TT", "JJ", "QQ", "KK", "AA"]],
-      ["AJs+", ["AJs", "AQs", "AKs"]],
-      ["ATs+", ["ATs", "AJs", "AQs", "AKs"]],
-      ["AQo+", ["AQo", "AKo"]],
-      ["AJo+", ["AJo", "AQo", "AKo"]],
-      ["KJs+", ["KJs", "KQs"]],
-      ["KTs+", ["KTs", "KJs", "KQs"]],
-      ["K9s+", ["K9s", "KTs", "KJs", "KQs"]],
-      ["KJs", ["KJs"]],
-      ["KQo", ["KQo"]],
-      ["QJs", ["QJs"]],
-      ["JTs", ["JTs"]],
-      ["T9s", ["T9s"]],
-      ["98s", ["98s"]],
-      ["AKo", ["AKo"]],
-      ["AKs", ["AKs"]],
-      ["AK", ["AKs", "AKo"]]
-    ];
-
-    tests.forEach(([token, expected]) => {
-      const got = expandShorthandToken(token);
-      const expectedStr = expected.join(",");
-      const gotStr = got.join(",");
-      if (expectedStr !== gotStr) {
-        console.error("[ParserSelfTest] Failed token " + token + ". Expected " + expectedStr + ", got " + gotStr);
-      }
-    });
-  }
-
-  function runRangeMembershipSelfTest() {
-    let failures = 0;
-
-    const assertMembership = (label, handSet, handClass, expected) => {
-      const got = handSet.has(handClass);
-      if (got !== expected) {
-        failures += 1;
-        console.error("[RangeSelfTest] " + label + " failed for " + handClass + ": expected " + expected + ", got " + got);
-      }
-    };
-
-    const assertVsRfiAction = (label, bucket, handClass, expectedAction) => {
-      const got = getVsRfiCorrectAction(bucket, handClass);
-      if (got !== expectedAction) {
-        failures += 1;
-        console.error("[RangeSelfTest] " + label + " failed for " + handClass + ": expected " + expectedAction + ", got " + got);
-      }
-    };
-
-    const utg = PARSED_RANGES[MODES.RFI].UTG;
-    assertMembership("UTG contains", utg, "AJs", true);
-    assertMembership("UTG contains", utg, "AQo", true);
-    assertMembership("UTG contains", utg, "KQs", true);
-    assertMembership("UTG contains", utg, "TT", true);
-    assertMembership("UTG excludes", utg, "AJo", false);
-    assertMembership("UTG excludes", utg, "KQo", false);
-    assertMembership("UTG excludes", utg, "99", false);
-
-    const mp = PARSED_RANGES[MODES.RFI].MP1;
-    assertMembership("MP contains", mp, "88", true);
-    assertMembership("MP contains", mp, "ATs", true);
-    assertMembership("MP contains", mp, "KJs", true);
-    assertMembership("MP contains", mp, "QJs", true);
-    assertMembership("MP contains", mp, "JTs", true);
-    assertMembership("MP contains", mp, "AJo", true);
-    assertMembership("MP contains", mp, "KQo", true);
-    assertMembership("MP excludes", mp, "A9s", false);
-    assertMembership("MP excludes", mp, "77", false);
-
-    const vsEp = PARSED_RANGES[MODES.THREE_BET].EP;
-    assertMembership("vs EP contains", vsEp, "AKs", true);
-    assertMembership("vs EP contains", vsEp, "AKo", true);
-    assertMembership("vs EP contains", vsEp, "QQ", true);
-    assertMembership("vs EP excludes", vsEp, "JJ", false);
-    assertMembership("vs EP excludes", vsEp, "AQs", false);
-
-    const vsMp = PARSED_RANGES[MODES.THREE_BET].MP;
-    assertMembership("vs MP contains", vsMp, "JJ", true);
-    assertMembership("vs MP contains", vsMp, "AQs", true);
-    assertMembership("vs MP contains", vsMp, "AKo", true);
-    assertMembership("vs MP excludes", vsMp, "AQo", false);
-    assertMembership("vs MP excludes", vsMp, "KQs", false);
-
-    const vsCo = PARSED_RANGES[MODES.THREE_BET].CO;
-    assertMembership("vs CO contains", vsCo, "TT", true);
-    assertMembership("vs CO contains", vsCo, "AJs", true);
-    assertMembership("vs CO contains", vsCo, "AQo", true);
-    assertMembership("vs CO contains", vsCo, "KQs", true);
-    assertMembership("vs CO excludes", vsCo, "99", false);
-    assertMembership("vs CO excludes", vsCo, "KJo", false);
-
-    const vsBtn = PARSED_RANGES[MODES.THREE_BET].BTN;
-    assertMembership("vs BTN contains", vsBtn, "TT", true);
-    assertMembership("vs BTN contains", vsBtn, "AJs", true);
-    assertMembership("vs BTN contains", vsBtn, "AQo", true);
-    assertMembership("vs BTN contains", vsBtn, "KQs", true);
-    assertMembership("vs BTN excludes", vsBtn, "99", false);
-    assertMembership("vs BTN excludes", vsBtn, "KJo", false);
-
-    assertVsRfiAction("VS_RFI vs EP", "EP", "KQo", ACTIONS.FOLD);
-    assertVsRfiAction("VS_RFI vs EP", "EP", "KQs", ACTIONS.CALL);
-    assertVsRfiAction("VS_RFI vs EP", "EP", "QQ", ACTIONS.THREE_BET);
-
-    assertVsRfiAction("VS_RFI vs CO", "CO", "AJo", ACTIONS.CALL);
-    assertVsRfiAction("VS_RFI vs CO", "CO", "TT", ACTIONS.THREE_BET);
-    assertVsRfiAction("VS_RFI vs CO", "CO", "54s", ACTIONS.FOLD);
-
-    assertVsRfiAction("VS_RFI vs BTN (BB)", "BTN", "KQo", ACTIONS.CALL);
-    assertVsRfiAction("VS_RFI vs BTN (BB)", "BTN", "TT", ACTIONS.THREE_BET);
-
-    if (failures === 0) {
-      console.log("[RangeSelfTest] all checks passed");
-    }
-  }
-
-  function runPerfSelfCheck() {
-    const iterations = 1000;
-    let correctCount = 0;
-    const start = performance.now();
-
-    for (let i = 0; i < iterations; i += 1) {
-      const mode = i % 3 === 0 ? MODES.RFI : (i % 3 === 1 ? MODES.THREE_BET : MODES.VS_RFI);
-      const question = generateQuestion(mode);
-      const action = mode === MODES.RFI
-        ? ((i & 1) === 0 ? ACTIONS.OPEN : ACTIONS.FOLD)
-        : mode === MODES.THREE_BET
-          ? ((i & 1) === 0 ? ACTIONS.THREE_BET : ACTIONS.NOT_THREE_BET)
-          : (i % 3 === 0 ? ACTIONS.FOLD : (i % 3 === 1 ? ACTIONS.CALL : ACTIONS.THREE_BET));
-      if (gradeQuestion(question, action)) {
-        correctCount += 1;
-      }
-    }
-
-    const totalMs = performance.now() - start;
-    console.log(
-      "[PerfSelfCheck] generate+grade x" + iterations +
-      " total " + totalMs.toFixed(2) + "ms; avg " + (totalMs / iterations).toFixed(4) +
-      "ms; sample-correct " + correctCount
-    );
-  }
-
-  function defaultSettings() {
-    return {
-      mode: MODES.RFI,
-      enabledRfiPositions: RFI_POSITIONS.slice(),
-      enabledThreeBetBuckets: THREE_BET_BUCKETS.slice(),
-      rfiSamplingMode: RFI_SAMPLING_MODES.BORDERLINE_HEAVY,
-      threeBetSamplingMode: THREEBET_SAMPLING_MODES.PLAUSIBLE_ONLY,
-      vsRfiSamplingMode: VS_RFI_SAMPLING_MODES.BORDERLINE_HEAVY,
-      vsRfiSpotMode: VS_RFI_SPOT_MODES.OPENER_BALANCED
-    };
-  }
-
-  function loadSettings() {
-    const fallback = defaultSettings();
-    try {
-      const raw = safeGetStorage(STORAGE_KEYS.settings);
-      const parsed = raw ? JSON.parse(raw) : {};
-
-      const mode =
-        parsed.mode === MODES.THREE_BET
-          ? MODES.THREE_BET
-          : parsed.mode === MODES.VS_RFI
-            ? MODES.VS_RFI
-            : MODES.RFI;
-
-      const rfi = Array.isArray(parsed.enabledRfiPositions)
-        ? RFI_POSITIONS.filter((value) => parsed.enabledRfiPositions.includes(value))
-        : fallback.enabledRfiPositions.slice();
-
-      const threeBet = Array.isArray(parsed.enabledThreeBetBuckets)
-        ? THREE_BET_BUCKETS.filter((value) => parsed.enabledThreeBetBuckets.includes(value))
-        : fallback.enabledThreeBetBuckets.slice();
-
-      const rfiSamplingMode =
-        parsed.rfiSamplingMode && RFI_SAMPLING_LABELS[parsed.rfiSamplingMode]
-          ? parsed.rfiSamplingMode
-          : fallback.rfiSamplingMode;
-
-      const threeBetSamplingMode =
-        parsed.threeBetSamplingMode && THREEBET_SAMPLING_LABELS[parsed.threeBetSamplingMode]
-          ? parsed.threeBetSamplingMode
-          : fallback.threeBetSamplingMode;
-
-      const vsRfiSamplingMode =
-        parsed.vsRfiSamplingMode && VS_RFI_SAMPLING_LABELS[parsed.vsRfiSamplingMode]
-          ? parsed.vsRfiSamplingMode
-          : fallback.vsRfiSamplingMode;
-
-      const vsRfiSpotMode =
-        parsed.vsRfiSpotMode && VS_RFI_SPOT_LABELS[parsed.vsRfiSpotMode]
-          ? parsed.vsRfiSpotMode
-          : fallback.vsRfiSpotMode;
-
-      return {
-        mode,
-        enabledRfiPositions: rfi.length ? rfi : fallback.enabledRfiPositions.slice(),
-        enabledThreeBetBuckets: threeBet.length ? threeBet : fallback.enabledThreeBetBuckets.slice(),
-        rfiSamplingMode,
-        threeBetSamplingMode,
-        vsRfiSamplingMode,
-        vsRfiSpotMode
-      };
-    } catch (err) {
-      return fallback;
-    }
-  }
-
-  function saveSettings() {
-    safeSetStorage(STORAGE_KEYS.settings, JSON.stringify(settings));
-  }
-
-  function defaultStats() {
-    const byContext = {};
-    RFI_POSITIONS.forEach((pos) => {
-      byContext[MODES.RFI + ":" + pos] = { total: 0, correct: 0 };
-    });
-    THREE_BET_BUCKETS.forEach((bucket) => {
-      byContext[MODES.THREE_BET + ":" + bucket] = { total: 0, correct: 0 };
-    });
-    VS_RFI_CONTEXTS.forEach((context) => {
-      byContext[context.key] = { total: 0, correct: 0 };
-    });
-
-    return {
-      total: 0,
-      correct: 0,
-      byContext,
-      misses: {}
-    };
-  }
-
-  function loadStats() {
-    const fallback = defaultStats();
-    try {
-      const raw = safeGetStorage(STORAGE_KEYS.stats);
-      const parsed = raw ? JSON.parse(raw) : {};
-
-      if (Number.isFinite(parsed.total) && parsed.total >= 0) {
-        fallback.total = Math.floor(parsed.total);
-      }
-      if (Number.isFinite(parsed.correct) && parsed.correct >= 0) {
-        fallback.correct = Math.floor(parsed.correct);
-      }
-
-      if (parsed.byContext && typeof parsed.byContext === "object") {
-        Object.keys(fallback.byContext).forEach((key) => {
-          const row = parsed.byContext[key];
-          if (!row || typeof row !== "object") {
-            return;
-          }
-
-          const total = Number.isFinite(row.total) && row.total >= 0 ? Math.floor(row.total) : 0;
-          const correct = Number.isFinite(row.correct) && row.correct >= 0 ? Math.floor(row.correct) : 0;
-
-          fallback.byContext[key] = {
-            total,
-            correct: correct > total ? total : correct
-          };
-        });
-      }
-
-      if (parsed.misses && typeof parsed.misses === "object") {
-        Object.entries(parsed.misses).forEach(([hand, count]) => {
-          if (HAND_CLASS_SET.has(hand) && Number.isFinite(count) && count > 0) {
-            fallback.misses[hand] = Math.floor(count);
-          }
-        });
-      }
-
-      if (fallback.correct > fallback.total) {
-        fallback.correct = fallback.total;
-      }
-
-      return fallback;
-    } catch (err) {
-      return fallback;
-    }
-  }
-
-  function saveStats() {
-    safeSetStorage(STORAGE_KEYS.stats, JSON.stringify(stats));
-  }
-
-  function safeGetStorage(key) {
-    if (!storageAvailable) {
-      return null;
-    }
-    try {
-      return window.localStorage.getItem(key);
-    } catch (err) {
-      markStorageUnavailable(err);
-      return null;
-    }
-  }
-
-  function safeSetStorage(key, value) {
-    if (!storageAvailable) {
-      return false;
-    }
-    try {
-      window.localStorage.setItem(key, value);
-      return true;
-    } catch (err) {
-      markStorageUnavailable(err);
-      return false;
-    }
-  }
-
-  function markStorageUnavailable(err) {
-    storageAvailable = false;
-    if (storageWarningShown) {
-      return;
-    }
-    storageWarningShown = true;
-    console.warn("Local storage unavailable. Running in session-only mode.");
-    if (DEBUG_MODE) {
-      console.warn("[StorageDebug]", err);
-    }
-  }
-})();
-</script>
+  <div id="chartModal" class="modal hidden" aria-hidden="true">
+    <div class="modal-card chart-card" role="dialog" aria-modal="true" aria-labelledby="chartTitle">
+      <div class="modal-header">
+        <h2 id="chartTitle">Charts</h2>
+        <button id="closeChartBtn" class="ghost-btn" type="button">Done</button>
+      </div>
+      <p class="modal-copy">One source of truth: the drill and chart use the same recommendation engine.</p>
+
+      <div class="chart-controls">
+        <label class="chart-control">
+          Mode
+          <select id="chartModeSelect"></select>
+        </label>
+        <label class="chart-control">
+          Opener
+          <select id="chartOpenerSelect"></select>
+        </label>
+        <label class="chart-control">
+          Hero
+          <select id="chartHeroSelect"></select>
+        </label>
+        <label class="chart-control">
+          Profile
+          <select id="chartProfileSelect"></select>
+        </label>
+        <label class="chart-control">
+          Size
+          <select id="chartSizeSelect"></select>
+        </label>
+      </div>
+
+      <div class="chart-legend" aria-label="Chart legend">
+        <span class="legend-pill"><span class="legend-dot dot-fold"></span>Fold</span>
+        <span class="legend-pill"><span class="legend-dot dot-call"></span>Call</span>
+        <span class="legend-pill"><span class="legend-dot dot-raise"></span>3-bet/4-bet</span>
+        <span class="legend-pill"><span class="legend-dot dot-open"></span>Open</span>
+        <span class="legend-pill"><span class="legend-dot dot-mixed"></span>Mixed</span>
+      </div>
+
+      <div id="chartMatrix" class="chart-matrix" aria-label="13 by 13 hand chart"></div>
+      <div id="chartDetail" class="chart-detail" aria-live="polite"></div>
+    </div>
+  </div>
+
+<script src="./range-engine.js"></script>
+<script src="./app.js"></script>
 </body>
 </html>
