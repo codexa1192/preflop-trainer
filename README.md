@@ -3,6 +3,14 @@ Preflop Trainer
 
 Public static poker preflop trainer hosted with GitHub Pages.
 
+Source layout
+-------------
+
+- `index.html` - static UI shell.
+- `range-engine.js` - single source of truth for live $1/$3 range presets, recommendation logic, grading, and chart output.
+- `app.js` - browser UI controller for drills, settings, stats, and charts.
+- `scripts/validate-ranges.js` - deterministic regression checks for key range decisions.
+
 Security posture
 ----------------
 
@@ -15,3 +23,12 @@ Deployment
 ----------
 
 GitHub Pages serves this site from `main` at `/`.
+
+Local validation
+----------------
+
+```bash
+node --check app.js
+node --check range-engine.js
+node scripts/validate-ranges.js
+```
