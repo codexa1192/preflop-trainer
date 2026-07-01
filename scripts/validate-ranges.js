@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 "use strict";
 
+const fs = require("fs");
+const path = require("path");
 const engine = require("../range-engine.js");
 
 let failures = 0;
@@ -30,6 +32,10 @@ function sameRecommendation(a, b) {
     a.explanation === b.explanation
   );
 }
+
+const rootDir = path.join(__dirname, "..");
+const indexHtml = fs.readFileSync(path.join(rootDir, "index.html"), "utf8");
+const appJs = fs.readFileSync(path.join(rootDir, "app.js"), "utf8");
 
 const aqoBtnVsMp3Standard = rec({
   openerPosition: "MP3",
@@ -169,6 +175,51 @@ assert(
 assert(
   engine.parseRangeList("77+").has("AA") && engine.parseRangeList("77+").has("77") && !engine.parseRangeList("77+").has("66"),
   "Parser expands pair-plus ranges correctly"
+);
+
+[
+  "modeRfiBtn",
+  "modeThreeBetBtn",
+  "modeVsRfiBtn",
+  "threeBetSamplingGrid",
+  "vsRfiSamplingGrid",
+  "threeBetStatsList",
+  "threeBetToggleGrid",
+  "vsRfiSpotGrid"
+].forEach((oldId) => {
+  assert(!indexHtml.includes(oldId) && !appJs.includes(oldId), `Removed old drill-mode DOM id ${oldId}`);
+});
+
+[
+  "drillSamplingGrid",
+  "openerToggleGrid",
+  "decisionMixNote",
+  "vsOpenStatsList"
+].forEach((requiredId) => {
+  assert(indexHtml.includes(`id="${requiredId}"`) && appJs.includes(requiredId), `Single decision UI id ${requiredId} is wired`);
+});
+
+assert(
+  !appJs.includes("settings.mode") && !appJs.includes("renderModeButtons") && !appJs.includes("setMode("),
+  "App no longer persists or renders separate drill modes"
+);
+
+assert(
+  !appJs.includes("gradeThreeBetDecision(") && !appJs.includes("3-bet vs Opener"),
+  "App uses full fold/call/3-bet recommendations instead of a duplicate 3-bet drill"
+);
+
+assert(
+  appJs.includes("MODES.THREE_BET + key.slice(MODES.VS_OPEN.length)") &&
+    appJs.includes("correct: Math.min(merged.correct, merged.total)"),
+  "Legacy 3-bet spot stats migrate into unified facing-open stats"
+);
+
+assert(
+  appJs.includes("First in") &&
+    appJs.includes("Facing open") &&
+    appJs.includes("4-bet reference"),
+  "Chart exposes one situation selector for first-in, facing-open, and 4-bet reference"
 );
 
 if (failures > 0) {
