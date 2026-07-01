@@ -20,12 +20,13 @@
     [SAMPLING.BORDERLINE]: "Borderline-heavy"
   };
 
-  const MODE_LABELS = {
-    [MODES.RFI]: "RFI",
-    [MODES.THREE_BET]: "3-Bet vs Opener",
-    [MODES.VS_OPEN]: "vs Open",
-    [MODES.FOUR_BET]: "4-Bet"
-  };
+  const DECISION_MIX = [
+    { id: MODES.RFI, label: "First in", weight: 0.3 },
+    { id: MODES.VS_OPEN, label: "Facing open", weight: 0.6 },
+    { id: MODES.FOUR_BET, label: "Facing 3-bet", weight: 0.1 }
+  ];
+  const LIVE_OPEN_SIZE_CLASSES = engine.OPEN_SIZE_CLASSES.filter((item) => item.id !== "SMALL");
+  const FOUR_BET_CONTEXT_KEY = MODES.FOUR_BET + ":default";
 
   let storageAvailable = true;
   let settings = loadSettings();
@@ -35,23 +36,18 @@
   const samplerState = {};
 
   const el = {
-    modeRfiBtn: document.getElementById("modeRfiBtn"),
-    modeThreeBetBtn: document.getElementById("modeThreeBetBtn"),
-    modeVsRfiBtn: document.getElementById("modeVsRfiBtn"),
     openChartsBtn: document.getElementById("openChartsBtn"),
     openSettingsBtn: document.getElementById("openSettingsBtn"),
-    openSettingsBtnAlt: document.getElementById("openSettingsBtnAlt"),
     closeSettingsBtn: document.getElementById("closeSettingsBtn"),
     settingsModal: document.getElementById("settingsModal"),
     settingsNotice: document.getElementById("settingsNotice"),
     profileGrid: document.getElementById("profileGrid"),
     openSizeGrid: document.getElementById("openSizeGrid"),
     rfiToggleGrid: document.getElementById("rfiToggleGrid"),
-    rfiSamplingGrid: document.getElementById("rfiSamplingGrid"),
-    threeBetToggleGrid: document.getElementById("threeBetToggleGrid"),
-    threeBetSamplingGrid: document.getElementById("threeBetSamplingGrid"),
-    vsRfiSamplingGrid: document.getElementById("vsRfiSamplingGrid"),
-    vsRfiSpotGrid: document.getElementById("vsRfiSpotGrid"),
+    drillSamplingGrid: document.getElementById("drillSamplingGrid"),
+    openerToggleGrid: document.getElementById("openerToggleGrid"),
+    decisionMixNote: document.getElementById("decisionMixNote"),
+    quickLiveDefaultsBtn: document.getElementById("quickLiveDefaultsBtn"),
     resetStatsBtn: document.getElementById("resetStatsBtn"),
     spotLine: document.getElementById("spotLine"),
     assumptionLine: document.getElementById("assumptionLine"),
@@ -72,8 +68,8 @@
     correctValue: document.getElementById("correctValue"),
     accuracyValue: document.getElementById("accuracyValue"),
     rfiStatsList: document.getElementById("rfiStatsList"),
-    threeBetStatsList: document.getElementById("threeBetStatsList"),
-    vsRfiStatsList: document.getElementById("vsRfiStatsList"),
+    vsOpenStatsList: document.getElementById("vsOpenStatsList"),
+    fourBetStatsList: document.getElementById("fourBetStatsList"),
     missList: document.getElementById("missList"),
     chartModal: document.getElementById("chartModal"),
     closeChartBtn: document.getElementById("closeChartBtn"),
@@ -82,6 +78,11 @@
     chartOpenerSelect: document.getElementById("chartOpenerSelect"),
     chartProfileSelect: document.getElementById("chartProfileSelect"),
     chartSizeSelect: document.getElementById("chartSizeSelect"),
+    chartAssumptionLine: document.getElementById("chartAssumptionLine"),
+    chartOpenerControl: document.getElementById("chartOpenerControl"),
+    chartHeroControl: document.getElementById("chartHeroControl"),
+    chartProfileControl: document.getElementById("chartProfileControl"),
+    chartSizeControl: document.getElementById("chartSizeControl"),
     chartMatrix: document.getElementById("chartMatrix"),
     chartDetail: document.getElementById("chartDetail")
   };
@@ -89,16 +90,10 @@
   bindEvents();
   buildSettingsUI();
   buildChartControls();
-  renderModeButtons();
-  setActionLabelsForMode(settings.mode);
   renderStats();
   nextQuestion();
 
   function bindEvents() {
-    el.modeRfiBtn.addEventListener("click", () => setMode(MODES.RFI));
-    el.modeThreeBetBtn.addEventListener("click", () => setMode(MODES.THREE_BET));
-    el.modeVsRfiBtn.addEventListener("click", () => setMode(MODES.VS_OPEN));
-
     el.yesActionBtn.addEventListener("click", () => submitAnswer(getButtonAction(el.yesActionBtn)));
     el.callActionBtn.addEventListener("click", () => submitAnswer(getButtonAction(el.callActionBtn)));
     el.noActionBtn.addEventListener("click", () => submitAnswer(getButtonAction(el.noActionBtn)));
@@ -107,10 +102,10 @@
     el.nextBtn.addEventListener("click", nextQuestion);
 
     el.openSettingsBtn.addEventListener("click", openSettings);
-    el.openSettingsBtnAlt.addEventListener("click", openSettings);
     el.closeSettingsBtn.addEventListener("click", closeSettings);
     el.openChartsBtn.addEventListener("click", openChart);
     el.closeChartBtn.addEventListener("click", closeChart);
+    el.quickLiveDefaultsBtn.addEventListener("click", resetToLiveDefaults);
 
     el.settingsModal.addEventListener("click", (evt) => {
       if (evt.target === el.settingsModal) {
@@ -136,30 +131,6 @@
       saveStats();
       renderStats();
       showNotice("Stats reset.");
-    });
-  }
-
-  function setMode(mode) {
-    if (settings.mode === mode) {
-      return;
-    }
-    settings.mode = mode;
-    saveSettings();
-    renderModeButtons();
-    setActionLabelsForMode(mode);
-    nextQuestion();
-  }
-
-  function renderModeButtons() {
-    const states = [
-      [el.modeRfiBtn, settings.mode === MODES.RFI],
-      [el.modeThreeBetBtn, settings.mode === MODES.THREE_BET],
-      [el.modeVsRfiBtn, settings.mode === MODES.VS_OPEN]
-    ];
-
-    states.forEach(([button, active]) => {
-      button.classList.toggle("active", active);
-      button.setAttribute("aria-pressed", String(active));
     });
   }
 
@@ -194,12 +165,14 @@
       return;
     }
 
-    el.chartModeSelect.value = currentQuestion.mode === MODES.THREE_BET ? MODES.VS_OPEN : currentQuestion.mode;
+    el.chartModeSelect.value = currentQuestion.mode;
     el.chartProfileSelect.value = settings.openerProfile;
     el.chartSizeSelect.value = settings.openSize;
 
     if (currentQuestion.mode === MODES.RFI) {
       rebuildHeroOptions(MODES.RFI, currentQuestion.position);
+    } else if (currentQuestion.mode === MODES.FOUR_BET) {
+      rebuildHeroOptions(MODES.FOUR_BET);
     } else {
       el.chartOpenerSelect.value = currentQuestion.openerPosition;
       rebuildHeroOptions(MODES.VS_OPEN, currentQuestion.heroPosition);
@@ -222,7 +195,7 @@
     buildRadioGroup({
       grid: el.openSizeGrid,
       name: "openSize",
-      values: engine.OPEN_SIZE_CLASSES,
+      values: LIVE_OPEN_SIZE_CLASSES,
       selected: settings.openSize,
       onChange: (value) => updateSetting("openSize", value)
     });
@@ -236,17 +209,23 @@
     });
 
     buildToggleGroup({
-      grid: el.threeBetToggleGrid,
+      grid: el.openerToggleGrid,
       values: engine.VS_OPEN_OPENERS,
       selected: settings.enabledOpeners,
       settingKey: "enabledOpeners",
       itemLabel: (value) => value + " opens"
     });
 
-    buildSamplingGrid(el.rfiSamplingGrid, "rfiSamplingMode", settings.rfiSamplingMode);
-    buildSamplingGrid(el.threeBetSamplingGrid, "threeBetSamplingMode", settings.threeBetSamplingMode);
-    buildSamplingGrid(el.vsRfiSamplingGrid, "vsOpenSamplingMode", settings.vsOpenSamplingMode);
-    el.vsRfiSpotGrid.innerHTML = '<p class="setting-note">vs Open spots are opener-balanced and exact by opener/hero position.</p>';
+    buildSamplingGrid(el.drillSamplingGrid, "drillSamplingMode", settings.drillSamplingMode);
+    el.decisionMixNote.innerHTML = '<p class="setting-note">The drill mixes first-in open/fold, facing-open fold/call/3-bet, and default facing-3-bet 4-bet decisions. Facing-open spots are exact by opener and hero position.</p>';
+  }
+
+  function resetToLiveDefaults() {
+    settings = defaultSettings();
+    saveSettings();
+    buildSettingsUI();
+    nextQuestion();
+    showNotice("Live $1/$3 defaults restored.");
   }
 
   function updateSetting(key, value) {
@@ -375,18 +354,20 @@
   }
 
   function nextQuestion() {
-    currentQuestion = generateQuestion(settings.mode);
+    currentQuestion = generateQuestion();
     whyVisible = false;
     renderQuestion();
   }
 
-  function generateQuestion(mode) {
+  function generateQuestion() {
+    const mode = drawDecisionMode();
+
     if (mode === MODES.RFI) {
       const position = drawEven("context:RFI", settings.enabledRfiPositions, settings.enabledRfiPositions.join("|"));
       const handClass = sampleHand({
         mode,
         position,
-        samplingMode: settings.rfiSamplingMode
+        samplingMode: settings.drillSamplingMode
       });
       const recommendation = engine.recommend({
         mode,
@@ -405,12 +386,30 @@
       };
     }
 
-    const spot = drawVsOpenSpot(mode);
+    if (mode === MODES.FOUR_BET) {
+      const handClass = sampleHand({
+        mode,
+        samplingMode: settings.drillSamplingMode
+      });
+      const recommendation = engine.recommend({
+        mode,
+        hand: handClass
+      });
+      return {
+        mode,
+        handClass,
+        recommendation,
+        statsContextKey: FOUR_BET_CONTEXT_KEY,
+        answered: false
+      };
+    }
+
+    const spot = drawVsOpenSpot();
     const handClass = sampleHand({
       mode: MODES.VS_OPEN,
       openerPosition: spot.openerPosition,
       heroPosition: spot.heroPosition,
-      samplingMode: mode === MODES.THREE_BET ? settings.threeBetSamplingMode : settings.vsOpenSamplingMode
+      samplingMode: settings.drillSamplingMode
     });
     const recommendation = engine.recommend({
       mode: MODES.VS_OPEN,
@@ -427,14 +426,19 @@
       heroPosition: spot.heroPosition,
       handClass,
       recommendation,
-      statsContextKey: mode + ":" + spot.key,
+      statsContextKey: MODES.VS_OPEN + ":" + spot.key,
       answered: false
     };
   }
 
-  function drawVsOpenSpot(mode) {
+  function drawDecisionMode() {
+    const signature = settings.enabledRfiPositions.join("|") + ":" + settings.enabledOpeners.join("|");
+    return drawWeighted("context:decision", DECISION_MIX, signature);
+  }
+
+  function drawVsOpenSpot() {
     const valid = engine.getValidVsOpenSpots().filter((spot) => settings.enabledOpeners.includes(spot.openerPosition));
-    return drawEven("context:" + mode, valid, settings.enabledOpeners.join("|") + ":" + valid.length);
+    return drawEven("context:" + MODES.VS_OPEN, valid, settings.enabledOpeners.join("|") + ":" + valid.length);
   }
 
   function sampleHand(args) {
@@ -470,11 +474,11 @@
       ]);
     }
 
-    if (settings.mode === MODES.THREE_BET || args.mode === MODES.THREE_BET) {
+    if (args.mode === MODES.FOUR_BET) {
       return nonEmptyGroups([
-        { id: "THREE_BET", weight: 0.35, values: rows.filter((row) => row.recommendation.allowedActions.includes(ACTIONS.THREE_BET)).map((row) => row.hand) },
-        { id: "CALL_CLOSE", weight: 0.35, values: rows.filter((row) => row.recommendation.primaryAction === ACTIONS.CALL || row.recommendation.allowedActions.length > 1).map((row) => row.hand) },
-        { id: "REST", weight: 0.3, values: rows.filter((row) => row.recommendation.primaryAction === ACTIONS.FOLD).map((row) => row.hand).slice(0, 70) }
+        { id: "FOUR_BET", weight: 0.35, values: rows.filter((row) => row.recommendation.primaryAction === ACTIONS.FOUR_BET && row.recommendation.allowedActions.length === 1).map((row) => row.hand) },
+        { id: "MIXED", weight: 0.45, values: rows.filter((row) => row.recommendation.allowedActions.length > 1).map((row) => row.hand) },
+        { id: "REST", weight: 0.2, values: rows.filter((row) => row.recommendation.primaryAction === ACTIONS.FOLD).map((row) => row.hand).slice(0, 85) }
       ]);
     }
 
@@ -497,18 +501,18 @@
   function renderQuestion() {
     const question = currentQuestion;
     if (question.mode === MODES.RFI) {
-      el.spotLine.textContent = "RFI - Position " + question.position;
-    } else if (question.mode === MODES.THREE_BET) {
-      el.spotLine.textContent = "3-Bet? - " + question.openerPosition + " opens, Hero " + question.heroPosition;
+      el.spotLine.textContent = "First in - Hero " + question.position;
+    } else if (question.mode === MODES.FOUR_BET) {
+      el.spotLine.textContent = "Facing 3-bet - Hero opened, villain 3-bets";
     } else {
-      el.spotLine.textContent = "vs Open - " + question.openerPosition + " opens, Hero " + question.heroPosition;
+      el.spotLine.textContent = "Facing open - " + question.openerPosition + " opens, Hero " + question.heroPosition;
     }
 
     el.assumptionLine.textContent = engine.getAssumptionLabel({
       openerProfile: settings.openerProfile,
       openSize: settings.openSize
     });
-    el.samplingLine.textContent = "Sampling: " + samplingLabelForMode(question.mode);
+    el.samplingLine.textContent = "Decision drill · Sampling: " + SAMPLING_LABELS[settings.drillSamplingMode];
     el.samplingLine.classList.remove("hidden");
     el.handLine.textContent = question.handClass;
 
@@ -528,16 +532,6 @@
     el.nextBtn.classList.add("hidden");
   }
 
-  function samplingLabelForMode(mode) {
-    if (mode === MODES.RFI) {
-      return SAMPLING_LABELS[settings.rfiSamplingMode];
-    }
-    if (mode === MODES.THREE_BET) {
-      return SAMPLING_LABELS[settings.threeBetSamplingMode];
-    }
-    return SAMPLING_LABELS[settings.vsOpenSamplingMode];
-  }
-
   function submitAnswer(takeAction) {
     if (!currentQuestion || currentQuestion.answered || !takeAction) {
       return;
@@ -545,9 +539,7 @@
 
     currentQuestion.answered = true;
     const recommendation = currentQuestion.recommendation;
-    const grade = currentQuestion.mode === MODES.THREE_BET
-      ? engine.gradeThreeBetDecision(recommendation, takeAction === ACTIONS.THREE_BET)
-      : engine.gradeRecommendation(recommendation, takeAction);
+    const grade = engine.gradeRecommendation(recommendation, takeAction);
 
     stats.total += 1;
     if (grade.isPassing) {
@@ -630,9 +622,11 @@
       return;
     }
 
-    setActionButton(el.yesActionBtn, ACTIONS.THREE_BET, true);
-    setActionButton(el.noActionBtn, ACTIONS.PASS, true);
-    setActionButton(el.callActionBtn, "", false);
+    if (mode === MODES.FOUR_BET) {
+      setActionButton(el.yesActionBtn, ACTIONS.FOUR_BET, true);
+      setActionButton(el.noActionBtn, ACTIONS.FOLD, true);
+      setActionButton(el.callActionBtn, "", false);
+    }
   }
 
   function setActionButton(button, action, visible) {
@@ -650,18 +644,18 @@
 
   function buildChartControls() {
     setSelectOptions(el.chartModeSelect, [
-      { id: MODES.RFI, label: "RFI" },
-      { id: MODES.VS_OPEN, label: "vs Open" },
-      { id: MODES.THREE_BET, label: "3-bet vs Opener" },
-      { id: MODES.FOUR_BET, label: "4-bet" }
+      { id: MODES.RFI, label: "First in" },
+      { id: MODES.VS_OPEN, label: "Facing open" },
+      { id: MODES.FOUR_BET, label: "Facing 3-bet" }
     ]);
     setSelectOptions(el.chartProfileSelect, engine.OPENER_PROFILES);
-    setSelectOptions(el.chartSizeSelect, engine.OPEN_SIZE_CLASSES);
+    setSelectOptions(el.chartSizeSelect, LIVE_OPEN_SIZE_CLASSES);
     syncChartControlsFromSettings();
   }
 
   function syncChartControlsFromSettings() {
-    el.chartModeSelect.value = settings.mode === MODES.THREE_BET ? MODES.THREE_BET : settings.mode;
+    const preferredMode = currentQuestion && currentQuestion.mode ? currentQuestion.mode : MODES.VS_OPEN;
+    el.chartModeSelect.value = preferredMode;
     el.chartProfileSelect.value = settings.openerProfile;
     el.chartSizeSelect.value = settings.openSize;
     if (!el.chartOpenerSelect.value) {
@@ -677,18 +671,27 @@
 
     if (mode === MODES.RFI) {
       el.chartOpenerSelect.disabled = true;
+      el.chartProfileSelect.disabled = false;
+      el.chartSizeSelect.disabled = true;
       rebuildHeroOptions(mode, el.chartHeroSelect.value || "UTG");
     } else if (mode === MODES.FOUR_BET) {
       el.chartOpenerSelect.disabled = true;
       el.chartHeroSelect.disabled = true;
+      el.chartProfileSelect.disabled = true;
+      el.chartSizeSelect.disabled = true;
+      rebuildHeroOptions(mode);
     } else {
       el.chartOpenerSelect.disabled = false;
       el.chartHeroSelect.disabled = false;
+      el.chartProfileSelect.disabled = false;
+      el.chartSizeSelect.disabled = false;
       if (!el.chartOpenerSelect.value) {
         el.chartOpenerSelect.value = "MP3";
       }
       rebuildHeroOptions(mode, el.chartHeroSelect.value);
     }
+    updateChartControlVisibility(mode);
+    renderChartAssumption(mode, profile, size);
 
     const rows = buildMatrixCells(mode, profile, size);
     el.chartMatrix.textContent = "";
@@ -775,6 +778,30 @@
     el.chartDetail.append(title, meta, why);
   }
 
+  function updateChartControlVisibility(mode) {
+    el.chartOpenerControl.classList.toggle("hidden", mode !== MODES.VS_OPEN);
+    el.chartHeroControl.classList.toggle("hidden", mode === MODES.FOUR_BET);
+    el.chartProfileControl.classList.toggle("hidden", mode === MODES.FOUR_BET);
+    el.chartSizeControl.classList.toggle("hidden", mode !== MODES.VS_OPEN);
+  }
+
+  function renderChartAssumption(mode, profile, size) {
+    if (mode === MODES.RFI) {
+      el.chartAssumptionLine.textContent = "Live $1/$3 Default · 8-handed · 100-133bb · no ante · " + engine.profileLabel(profile) + " profile · Hero " + (el.chartHeroSelect.value || "UTG");
+      return;
+    }
+
+    if (mode === MODES.FOUR_BET) {
+      el.chartAssumptionLine.textContent = "Live $1/$3 Default · 8-handed · 100-133bb · no ante · Hero opened and faces a 3-bet · default 4-bet range";
+      return;
+    }
+
+    el.chartAssumptionLine.textContent = engine.getAssumptionLabel({
+      openerProfile: profile,
+      openSize: size
+    }) + " · " + (el.chartOpenerSelect.value || "MP3") + " opens, Hero " + (el.chartHeroSelect.value || "BTN");
+  }
+
   function rebuildHeroOptions(mode, preferredValue) {
     if (mode === MODES.RFI) {
       setSelectOptions(el.chartHeroSelect, engine.RFI_POSITIONS.map((id) => ({ id, label: id })));
@@ -816,8 +843,8 @@
     el.correctValue.textContent = String(stats.correct);
     el.accuracyValue.textContent = formatPercent(stats.correct, stats.total);
     renderContextStatList(el.rfiStatsList, engine.RFI_POSITIONS.map((position) => ({ key: MODES.RFI + ":" + position, label: position })));
-    renderContextStatList(el.threeBetStatsList, engine.getValidVsOpenSpots().map((spot) => ({ key: MODES.THREE_BET + ":" + spot.key, label: spot.key.replace(">", " -> ") })));
-    renderContextStatList(el.vsRfiStatsList, engine.getValidVsOpenSpots().map((spot) => ({ key: MODES.VS_OPEN + ":" + spot.key, label: spot.key.replace(">", " -> ") })));
+    renderContextStatList(el.vsOpenStatsList, engine.getValidVsOpenSpots().map((spot) => ({ key: MODES.VS_OPEN + ":" + spot.key, label: spot.key.replace(">", " -> ") })));
+    renderContextStatList(el.fourBetStatsList, [{ key: FOUR_BET_CONTEXT_KEY, label: "Default live 4-bet" }]);
     renderMissList();
   }
 
@@ -914,14 +941,11 @@
 
   function defaultSettings() {
     return {
-      mode: MODES.RFI,
       openerProfile: "BALANCED",
       openSize: "STANDARD",
       enabledRfiPositions: engine.RFI_POSITIONS.slice(),
       enabledOpeners: engine.VS_OPEN_OPENERS.slice(),
-      rfiSamplingMode: SAMPLING.BORDERLINE,
-      threeBetSamplingMode: SAMPLING.BORDERLINE,
-      vsOpenSamplingMode: SAMPLING.BORDERLINE
+      drillSamplingMode: SAMPLING.BORDERLINE
     };
   }
 
@@ -930,25 +954,22 @@
     try {
       const raw = safeGetStorage(STORAGE_KEYS.settings);
       const parsed = raw ? JSON.parse(raw) : {};
-      const mode = [MODES.RFI, MODES.THREE_BET, MODES.VS_OPEN].includes(parsed.mode) ? parsed.mode : fallback.mode;
       const openerProfile = engine.OPENER_PROFILES.some((item) => item.id === parsed.openerProfile) ? parsed.openerProfile : fallback.openerProfile;
-      const openSize = engine.OPEN_SIZE_CLASSES.some((item) => item.id === parsed.openSize) ? parsed.openSize : fallback.openSize;
+      const openSize = LIVE_OPEN_SIZE_CLASSES.some((item) => item.id === parsed.openSize) ? parsed.openSize : fallback.openSize;
       const enabledRfiPositions = Array.isArray(parsed.enabledRfiPositions)
         ? engine.RFI_POSITIONS.filter((position) => parsed.enabledRfiPositions.includes(position))
         : fallback.enabledRfiPositions;
       const enabledOpeners = Array.isArray(parsed.enabledOpeners)
         ? engine.VS_OPEN_OPENERS.filter((position) => parsed.enabledOpeners.includes(position))
         : fallback.enabledOpeners;
+      const samplingMode = parsed.drillSamplingMode || parsed.vsOpenSamplingMode || parsed.rfiSamplingMode;
 
       return {
-        mode,
         openerProfile,
         openSize,
         enabledRfiPositions: enabledRfiPositions.length ? enabledRfiPositions : fallback.enabledRfiPositions,
         enabledOpeners: enabledOpeners.length ? enabledOpeners : fallback.enabledOpeners,
-        rfiSamplingMode: SAMPLING_LABELS[parsed.rfiSamplingMode] ? parsed.rfiSamplingMode : fallback.rfiSamplingMode,
-        threeBetSamplingMode: SAMPLING_LABELS[parsed.threeBetSamplingMode] ? parsed.threeBetSamplingMode : fallback.threeBetSamplingMode,
-        vsOpenSamplingMode: SAMPLING_LABELS[parsed.vsOpenSamplingMode] ? parsed.vsOpenSamplingMode : fallback.vsOpenSamplingMode
+        drillSamplingMode: SAMPLING_LABELS[samplingMode] ? samplingMode : fallback.drillSamplingMode
       };
     } catch (err) {
       return fallback;
@@ -965,9 +986,9 @@
       byContext[MODES.RFI + ":" + position] = { total: 0, correct: 0 };
     });
     engine.getValidVsOpenSpots().forEach((spot) => {
-      byContext[MODES.THREE_BET + ":" + spot.key] = { total: 0, correct: 0 };
       byContext[MODES.VS_OPEN + ":" + spot.key] = { total: 0, correct: 0 };
     });
+    byContext[FOUR_BET_CONTEXT_KEY] = { total: 0, correct: 0 };
     return {
       total: 0,
       correct: 0,
@@ -989,11 +1010,21 @@
       }
       if (parsed.byContext && typeof parsed.byContext === "object") {
         Object.keys(fallback.byContext).forEach((key) => {
-          const row = parsed.byContext[key];
-          if (row && Number.isFinite(row.total) && Number.isFinite(row.correct)) {
+          const rows = [parsed.byContext[key]];
+          if (key.startsWith(MODES.VS_OPEN + ":")) {
+            rows.push(parsed.byContext[MODES.THREE_BET + key.slice(MODES.VS_OPEN.length)]);
+          }
+          const merged = rows.reduce((bucket, row) => {
+            if (row && Number.isFinite(row.total) && Number.isFinite(row.correct)) {
+              bucket.total += Math.max(0, Math.floor(row.total));
+              bucket.correct += Math.max(0, Math.floor(row.correct));
+            }
+            return bucket;
+          }, { total: 0, correct: 0 });
+          if (merged.total > 0) {
             fallback.byContext[key] = {
-              total: Math.max(0, Math.floor(row.total)),
-              correct: Math.max(0, Math.min(Math.floor(row.correct), Math.floor(row.total)))
+              total: merged.total,
+              correct: Math.min(merged.correct, merged.total)
             };
           }
         });

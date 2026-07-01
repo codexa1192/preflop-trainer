@@ -86,7 +86,7 @@
     [DEFAULT_PRESET_ID]: {
       id: DEFAULT_PRESET_ID,
       name: "Live $1/$3 Default",
-      assumptions: "Live $1/$3 Default · 8-handed · 100bb · no ante",
+      assumptions: "Live $1/$3 Default · 8-handed · 100-133bb · no ante",
       rfi: {
         TIGHT: {
           UTG: { open: "99+, AJs+, KQs, AQo+", mixed: "88, ATs, KJs, QJs" },
@@ -788,8 +788,11 @@
     if (recommendation.primaryAction === ACTIONS.CALL) {
       return "call";
     }
-    if (recommendation.primaryAction === ACTIONS.THREE_BET || recommendation.primaryAction === ACTIONS.FOUR_BET) {
-      return "raise";
+    if (recommendation.primaryAction === ACTIONS.THREE_BET) {
+      return "three-bet";
+    }
+    if (recommendation.primaryAction === ACTIONS.FOUR_BET) {
+      return "four-bet";
     }
     return "fold";
   }

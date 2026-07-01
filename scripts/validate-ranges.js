@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 "use strict";
 
+const fs = require("fs");
+const path = require("path");
 const engine = require("../range-engine.js");
 
 let failures = 0;
@@ -30,6 +32,11 @@ function sameRecommendation(a, b) {
     a.explanation === b.explanation
   );
 }
+
+const rootDir = path.join(__dirname, "..");
+const indexHtml = fs.readFileSync(path.join(rootDir, "index.html"), "utf8");
+const appJs = fs.readFileSync(path.join(rootDir, "app.js"), "utf8");
+const engineJs = fs.readFileSync(path.join(rootDir, "range-engine.js"), "utf8");
 
 const aqoBtnVsMp3Standard = rec({
   openerPosition: "MP3",
@@ -104,6 +111,36 @@ assert(
   "77 UTG Balanced RFI is at least reasonable/open"
 );
 
+[
+  ["55", "CO"],
+  ["66", "UTG"],
+  ["77", "UTG"]
+].forEach(([hand, position]) => {
+  const recommendation = engine.recommend({
+    mode: engine.MODES.RFI,
+    position,
+    hand,
+    openerProfile: "BALANCED",
+    openSize: "STANDARD"
+  });
+  assert(
+    recommendation.allowedActions.includes(engine.ACTIONS.OPEN) &&
+      !/limp/i.test(recommendation.explanation + " " + recommendation.rangeLabel),
+    `${hand} ${position} Balanced RFI is open/mixed, not a limp recommendation`
+  );
+});
+
+const setMine55BtnVsMp3 = rec({
+  openerPosition: "MP3",
+  heroPosition: "BTN",
+  hand: "55"
+});
+assert(
+  setMine55BtnVsMp3.primaryAction === engine.ACTIONS.CALL &&
+    !/limp/i.test(setMine55BtnVsMp3.explanation + " " + setMine55BtnVsMp3.rangeLabel),
+  "55 BTN vs MP3 facing open is a call/set-mining continue, not a limp recommendation"
+);
+
 const chartRec = engine.getChartCellRecommendation({
   mode: engine.MODES.VS_OPEN,
   openerPosition: "MP3",
@@ -155,6 +192,25 @@ assert(
   "Pure A5s 3-bet is tagged as bluff/semi-bluff"
 );
 
+const fourBetKk = engine.recommend({
+  mode: engine.MODES.FOUR_BET,
+  hand: "KK"
+});
+assert(
+  fourBetKk.primaryAction === engine.ACTIONS.FOUR_BET &&
+    fourBetKk.allowedActions.includes(engine.ACTIONS.FOUR_BET),
+  "KK facing 3-bet uses the engine-backed 4-bet recommendation"
+);
+
+const chartFourBetKk = engine.getChartCellRecommendation({
+  mode: engine.MODES.FOUR_BET,
+  hand: "KK"
+});
+assert(
+  sameRecommendation(chartFourBetKk, fourBetKk),
+  "Facing 3-bet chart output and drill output use the same 4-bet recommendation object"
+);
+
 const contradictions = engine.validatePureActionRanges();
 assert(
   contradictions.length === 0,
@@ -169,6 +225,94 @@ assert(
 assert(
   engine.parseRangeList("77+").has("AA") && engine.parseRangeList("77+").has("77") && !engine.parseRangeList("77+").has("66"),
   "Parser expands pair-plus ranges correctly"
+);
+
+[
+  "modeRfiBtn",
+  "modeThreeBetBtn",
+  "modeVsRfiBtn",
+  "threeBetSamplingGrid",
+  "vsRfiSamplingGrid",
+  "threeBetStatsList",
+  "threeBetToggleGrid",
+  "vsRfiSpotGrid"
+].forEach((oldId) => {
+  assert(!indexHtml.includes(oldId) && !appJs.includes(oldId), `Removed old drill-mode DOM id ${oldId}`);
+});
+
+[
+  "drillSamplingGrid",
+  "openerToggleGrid",
+  "decisionMixNote",
+  "vsOpenStatsList",
+  "fourBetStatsList",
+  "quickLiveDefaultsBtn",
+  "chartAssumptionLine",
+  "chartOpenerControl",
+  "chartHeroControl",
+  "chartProfileControl",
+  "chartSizeControl"
+].forEach((requiredId) => {
+  assert(indexHtml.includes(`id="${requiredId}"`) && appJs.includes(requiredId), `Single decision UI id ${requiredId} is wired`);
+});
+
+assert(
+  !appJs.includes("settings.mode") && !appJs.includes("renderModeButtons") && !appJs.includes("setMode("),
+  "App no longer persists or renders separate drill modes"
+);
+
+assert(
+  !appJs.includes("gradeThreeBetDecision(") && !appJs.includes("3-bet vs Opener"),
+  "App uses full fold/call/3-bet recommendations instead of a duplicate 3-bet drill"
+);
+
+assert(
+  appJs.includes("MODES.THREE_BET + key.slice(MODES.VS_OPEN.length)") &&
+    appJs.includes("correct: Math.min(merged.correct, merged.total)"),
+  "Legacy 3-bet spot stats migrate into unified facing-open stats"
+);
+
+assert(
+  appJs.includes("First in") &&
+    appJs.includes("Facing open") &&
+    appJs.includes("Facing 3-bet"),
+  "Chart exposes one situation selector for first-in, facing-open, and facing-3-bet"
+);
+
+assert(
+  appJs.includes("MODES.FOUR_BET") &&
+    appJs.includes("ACTIONS.FOUR_BET") &&
+    appJs.includes("FOUR_BET_CONTEXT_KEY"),
+  "Unified drill includes the supported engine-backed facing-3-bet decision"
+);
+
+assert(
+  indexHtml.includes("Preflop Chart") &&
+    indexHtml.includes("100-133bb") &&
+    appJs.includes("updateChartControlVisibility"),
+  "UI uses unified Preflop Chart labeling, live stack assumptions, and situation-specific chart controls"
+);
+
+assert(
+  appJs.includes('LIVE_OPEN_SIZE_CLASSES = engine.OPEN_SIZE_CLASSES.filter((item) => item.id !== "SMALL")') &&
+    !appJs.includes("values: engine.OPEN_SIZE_CLASSES") &&
+    !appJs.includes("setSelectOptions(el.chartSizeSelect, engine.OPEN_SIZE_CLASSES)"),
+  "Settings and chart default to standard/large live open sizing, not small opens"
+);
+
+assert(
+  appJs.includes("engine.profileLabel(profile) + \" profile · Hero \"") &&
+    !appJs.includes("openSize: settings.openSize\\n      }) + \" · Hero \""),
+  "RFI chart assumption omits hidden open-size text that does not affect RFI output"
+);
+
+assert(
+  engineJs.includes("chart-three-bet") === false &&
+    indexHtml.includes("chart-three-bet") &&
+    indexHtml.includes("chart-four-bet") &&
+    engineJs.includes('return "three-bet"') &&
+    engineJs.includes('return "four-bet"'),
+  "Chart colors distinguish 3-bet and 4-bet actions"
 );
 
 if (failures > 0) {

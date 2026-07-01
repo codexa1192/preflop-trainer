@@ -95,38 +95,6 @@ button {
   transform: translateY(1px);
 }
 
-.mode-toggle {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.settings-btn-alt {
-  width: 100%;
-  margin-bottom: 12px;
-}
-
-.mode-btn {
-  border: 1px solid #afc9bc;
-  border-radius: 14px;
-  min-height: 52px;
-  font-size: 14px;
-  line-height: 1.15;
-  font-weight: 800;
-  padding: 6px 4px;
-  color: #1f4538;
-  background: rgba(255, 255, 255, 0.74);
-  touch-action: manipulation;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.mode-btn.active {
-  border-color: #0f6e4c;
-  color: #ffffff;
-  background: linear-gradient(180deg, #17835a, #116a48);
-}
-
 .quiz-card {
   background: var(--panel);
   border: 1px solid var(--panel-border);
@@ -597,7 +565,8 @@ button {
 
 .dot-fold { background: #eef1ed; }
 .dot-call { background: #9bb8d8; }
-.dot-raise { background: #d98b64; }
+.dot-three-bet { background: #d98b64; }
+.dot-four-bet { background: #8a6fd1; }
 .dot-open { background: #71b889; }
 .dot-mixed { background: #d8c061; }
 
@@ -606,7 +575,7 @@ button {
   grid-template-columns: repeat(13, minmax(0, 1fr));
   gap: 3px;
   width: 100%;
-  max-width: 620px;
+  max-width: 540px;
   margin: 0 auto;
 }
 
@@ -631,9 +600,19 @@ button {
 
 .chart-fold { background: #f1f3ef; color: #687a72; }
 .chart-call { background: #c9ddf1; }
-.chart-raise { background: #f2c0a5; }
+.chart-three-bet { background: #f2c0a5; }
+.chart-four-bet { background: #d8cdf6; }
 .chart-open { background: #b9e3c7; }
 .chart-mixed { background: #eee2a2; }
+
+.chart-assumption-line {
+  margin: -2px 0 8px;
+  color: #355d50;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
 
 .chart-detail {
   margin-top: 12px;
@@ -672,11 +651,6 @@ button {
     font-size: 34px;
   }
 
-  .mode-btn {
-    min-height: 56px;
-    font-size: 16px;
-  }
-
   .modal {
     align-items: center;
     padding: 16px;
@@ -704,24 +678,17 @@ button {
     <header class="topbar">
       <div>
         <h1>Poto Preflop Trainer</h1>
-        <p class="subhead">Offline custom preflop drill</p>
+        <p class="subhead">Preflop Decision drill</p>
       </div>
       <div class="topbar-actions">
-        <button id="openChartsBtn" class="ghost-btn" type="button">Charts</button>
+        <button id="openChartsBtn" class="ghost-btn" type="button">Preflop Chart</button>
         <button id="openSettingsBtn" class="ghost-btn" type="button">Settings</button>
       </div>
     </header>
 
-    <section class="mode-toggle" aria-label="Quiz mode">
-      <button id="modeRfiBtn" class="mode-btn" type="button" aria-pressed="true">RFI</button>
-      <button id="modeThreeBetBtn" class="mode-btn" type="button" aria-pressed="false">3-Bet vs Opener</button>
-      <button id="modeVsRfiBtn" class="mode-btn" type="button" aria-pressed="false">vs Open</button>
-    </section>
-    <button id="openSettingsBtnAlt" class="ghost-btn settings-btn-alt" type="button">Settings</button>
-
     <section class="quiz-card">
-      <p id="spotLine" class="spot-line">RFI - Position UTG</p>
-      <p id="assumptionLine" class="assumption-line">Live $1/$3 Default · 8-handed · 100bb · no ante</p>
+      <p id="spotLine" class="spot-line">Preflop Decision</p>
+      <p id="assumptionLine" class="assumption-line">Live $1/$3 Default · 8-handed · 100-133bb · no ante</p>
       <p id="samplingLine" class="sampling-line hidden">Sampling: Plausible only</p>
       <p id="handLine" class="hand-line">AKo</p>
       <p class="prompt">Choose action</p>
@@ -762,12 +729,12 @@ button {
         <ul id="rfiStatsList" class="stat-list"></ul>
       </div>
       <div class="stat-group">
-        <h3>Accuracy by 3-Bet Spot</h3>
-        <ul id="threeBetStatsList" class="stat-list"></ul>
+        <h3>Accuracy by vs Open Spot</h3>
+        <ul id="vsOpenStatsList" class="stat-list"></ul>
       </div>
       <div class="stat-group">
-        <h3>Accuracy by vs Open Spot</h3>
-        <ul id="vsRfiStatsList" class="stat-list"></ul>
+        <h3>Accuracy by Facing 3-Bet</h3>
+        <ul id="fourBetStatsList" class="stat-list"></ul>
       </div>
       <div class="stat-group">
         <h3>Top 10 Missed Hands</h3>
@@ -782,7 +749,7 @@ button {
         <h2 id="settingsTitle">Settings</h2>
         <button id="closeSettingsBtn" class="ghost-btn" type="button">Done</button>
       </div>
-      <p class="modal-copy">Pick which spots appear in each quiz mode.</p>
+      <p class="modal-copy">Pick the live $1/$3 assumptions and spots for the decision drill.</p>
 
       <div class="setting-block">
         <h3>Opener profile</h3>
@@ -800,30 +767,21 @@ button {
       </div>
 
       <div class="setting-block">
-        <h3>RFI sampling</h3>
-        <div id="rfiSamplingGrid" class="radio-stack"></div>
+        <h3>Drill sampling</h3>
+        <div id="drillSamplingGrid" class="radio-stack"></div>
       </div>
 
       <div class="setting-block">
-        <h3>Openers for facing-open drills</h3>
-        <div id="threeBetToggleGrid" class="toggle-grid"></div>
+        <h3>Openers for facing opens</h3>
+        <div id="openerToggleGrid" class="toggle-grid"></div>
       </div>
 
       <div class="setting-block">
-        <h3>3-Bet sampling</h3>
-        <div id="threeBetSamplingGrid" class="radio-stack"></div>
+        <h3>Decision mix</h3>
+        <div id="decisionMixNote" class="radio-stack"></div>
       </div>
 
-      <div class="setting-block">
-        <h3>vs Open sampling</h3>
-        <div id="vsRfiSamplingGrid" class="radio-stack"></div>
-      </div>
-
-      <div class="setting-block">
-        <h3>vs Open spot spread</h3>
-        <div id="vsRfiSpotGrid" class="radio-stack"></div>
-      </div>
-
+      <button id="quickLiveDefaultsBtn" class="next-btn" type="button">Quick Live Defaults</button>
       <button id="resetStatsBtn" class="reset-btn" type="button">Reset Stats</button>
       <p id="settingsNotice" class="notice" aria-live="polite"></p>
     </div>
@@ -832,29 +790,30 @@ button {
   <div id="chartModal" class="modal hidden" aria-hidden="true">
     <div class="modal-card chart-card" role="dialog" aria-modal="true" aria-labelledby="chartTitle">
       <div class="modal-header">
-        <h2 id="chartTitle">Charts</h2>
+        <h2 id="chartTitle">Preflop Chart</h2>
         <button id="closeChartBtn" class="ghost-btn" type="button">Done</button>
       </div>
       <p class="modal-copy">One source of truth: the drill and chart use the same recommendation engine.</p>
+      <p id="chartAssumptionLine" class="chart-assumption-line"></p>
 
       <div class="chart-controls">
-        <label class="chart-control">
-          Mode
+        <label id="chartSituationControl" class="chart-control">
+          Situation
           <select id="chartModeSelect"></select>
         </label>
-        <label class="chart-control">
+        <label id="chartOpenerControl" class="chart-control">
           Opener
           <select id="chartOpenerSelect"></select>
         </label>
-        <label class="chart-control">
+        <label id="chartHeroControl" class="chart-control">
           Hero
           <select id="chartHeroSelect"></select>
         </label>
-        <label class="chart-control">
+        <label id="chartProfileControl" class="chart-control">
           Profile
           <select id="chartProfileSelect"></select>
         </label>
-        <label class="chart-control">
+        <label id="chartSizeControl" class="chart-control">
           Size
           <select id="chartSizeSelect"></select>
         </label>
@@ -863,8 +822,9 @@ button {
       <div class="chart-legend" aria-label="Chart legend">
         <span class="legend-pill"><span class="legend-dot dot-fold"></span>Fold</span>
         <span class="legend-pill"><span class="legend-dot dot-call"></span>Call</span>
-        <span class="legend-pill"><span class="legend-dot dot-raise"></span>3-bet/4-bet</span>
         <span class="legend-pill"><span class="legend-dot dot-open"></span>Open</span>
+        <span class="legend-pill"><span class="legend-dot dot-three-bet"></span>3-bet</span>
+        <span class="legend-pill"><span class="legend-dot dot-four-bet"></span>4-bet</span>
         <span class="legend-pill"><span class="legend-dot dot-mixed"></span>Mixed</span>
       </div>
 
