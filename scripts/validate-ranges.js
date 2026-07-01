@@ -315,6 +315,14 @@ assert(
   "Chart colors distinguish 3-bet and 4-bet actions"
 );
 
+assert(
+  indexHtml.includes("./range-engine.js?v=20260701-unified-preflop") &&
+    indexHtml.includes("./app.js?v=20260701-unified-preflop") &&
+    !indexHtml.includes('<script src="./app.js"></script>') &&
+    !indexHtml.includes('<script src="./range-engine.js"></script>'),
+  "Local scripts are versioned so deployed HTML does not pair with stale cached JS"
+);
+
 if (failures > 0) {
   console.error(`${failures} range validation check(s) failed.`);
   process.exit(1);
