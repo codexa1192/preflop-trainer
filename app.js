@@ -21,9 +21,12 @@
   };
 
   const DECISION_MIX = [
-    { id: MODES.RFI, label: "First in", weight: 0.35 },
-    { id: MODES.VS_OPEN, label: "Facing open", weight: 0.65 }
+    { id: MODES.RFI, label: "First in", weight: 0.3 },
+    { id: MODES.VS_OPEN, label: "Facing open", weight: 0.6 },
+    { id: MODES.FOUR_BET, label: "Facing 3-bet", weight: 0.1 }
   ];
+  const LIVE_OPEN_SIZE_CLASSES = engine.OPEN_SIZE_CLASSES.filter((item) => item.id !== "SMALL");
+  const FOUR_BET_CONTEXT_KEY = MODES.FOUR_BET + ":default";
 
   let storageAvailable = true;
   let settings = loadSettings();
@@ -44,6 +47,7 @@
     drillSamplingGrid: document.getElementById("drillSamplingGrid"),
     openerToggleGrid: document.getElementById("openerToggleGrid"),
     decisionMixNote: document.getElementById("decisionMixNote"),
+    quickLiveDefaultsBtn: document.getElementById("quickLiveDefaultsBtn"),
     resetStatsBtn: document.getElementById("resetStatsBtn"),
     spotLine: document.getElementById("spotLine"),
     assumptionLine: document.getElementById("assumptionLine"),
@@ -65,6 +69,7 @@
     accuracyValue: document.getElementById("accuracyValue"),
     rfiStatsList: document.getElementById("rfiStatsList"),
     vsOpenStatsList: document.getElementById("vsOpenStatsList"),
+    fourBetStatsList: document.getElementById("fourBetStatsList"),
     missList: document.getElementById("missList"),
     chartModal: document.getElementById("chartModal"),
     closeChartBtn: document.getElementById("closeChartBtn"),
@@ -73,6 +78,11 @@
     chartOpenerSelect: document.getElementById("chartOpenerSelect"),
     chartProfileSelect: document.getElementById("chartProfileSelect"),
     chartSizeSelect: document.getElementById("chartSizeSelect"),
+    chartAssumptionLine: document.getElementById("chartAssumptionLine"),
+    chartOpenerControl: document.getElementById("chartOpenerControl"),
+    chartHeroControl: document.getElementById("chartHeroControl"),
+    chartProfileControl: document.getElementById("chartProfileControl"),
+    chartSizeControl: document.getElementById("chartSizeControl"),
     chartMatrix: document.getElementById("chartMatrix"),
     chartDetail: document.getElementById("chartDetail")
   };
@@ -95,6 +105,7 @@
     el.closeSettingsBtn.addEventListener("click", closeSettings);
     el.openChartsBtn.addEventListener("click", openChart);
     el.closeChartBtn.addEventListener("click", closeChart);
+    el.quickLiveDefaultsBtn.addEventListener("click", resetToLiveDefaults);
 
     el.settingsModal.addEventListener("click", (evt) => {
       if (evt.target === el.settingsModal) {
@@ -160,6 +171,8 @@
 
     if (currentQuestion.mode === MODES.RFI) {
       rebuildHeroOptions(MODES.RFI, currentQuestion.position);
+    } else if (currentQuestion.mode === MODES.FOUR_BET) {
+      rebuildHeroOptions(MODES.FOUR_BET);
     } else {
       el.chartOpenerSelect.value = currentQuestion.openerPosition;
       rebuildHeroOptions(MODES.VS_OPEN, currentQuestion.heroPosition);
@@ -182,7 +195,7 @@
     buildRadioGroup({
       grid: el.openSizeGrid,
       name: "openSize",
-      values: engine.OPEN_SIZE_CLASSES,
+      values: LIVE_OPEN_SIZE_CLASSES,
       selected: settings.openSize,
       onChange: (value) => updateSetting("openSize", value)
     });
@@ -204,7 +217,15 @@
     });
 
     buildSamplingGrid(el.drillSamplingGrid, "drillSamplingMode", settings.drillSamplingMode);
-    el.decisionMixNote.innerHTML = '<p class="setting-note">The drill mixes first-in open/fold spots with facing-open fold/call/3-bet spots. Facing-open spots are exact by opener and hero position.</p>';
+    el.decisionMixNote.innerHTML = '<p class="setting-note">The drill mixes first-in open/fold, facing-open fold/call/3-bet, and default facing-3-bet 4-bet decisions. Facing-open spots are exact by opener and hero position.</p>';
+  }
+
+  function resetToLiveDefaults() {
+    settings = defaultSettings();
+    saveSettings();
+    buildSettingsUI();
+    nextQuestion();
+    showNotice("Live $1/$3 defaults restored.");
   }
 
   function updateSetting(key, value) {
@@ -365,6 +386,24 @@
       };
     }
 
+    if (mode === MODES.FOUR_BET) {
+      const handClass = sampleHand({
+        mode,
+        samplingMode: settings.drillSamplingMode
+      });
+      const recommendation = engine.recommend({
+        mode,
+        hand: handClass
+      });
+      return {
+        mode,
+        handClass,
+        recommendation,
+        statsContextKey: FOUR_BET_CONTEXT_KEY,
+        answered: false
+      };
+    }
+
     const spot = drawVsOpenSpot();
     const handClass = sampleHand({
       mode: MODES.VS_OPEN,
@@ -435,6 +474,14 @@
       ]);
     }
 
+    if (args.mode === MODES.FOUR_BET) {
+      return nonEmptyGroups([
+        { id: "FOUR_BET", weight: 0.35, values: rows.filter((row) => row.recommendation.primaryAction === ACTIONS.FOUR_BET && row.recommendation.allowedActions.length === 1).map((row) => row.hand) },
+        { id: "MIXED", weight: 0.45, values: rows.filter((row) => row.recommendation.allowedActions.length > 1).map((row) => row.hand) },
+        { id: "REST", weight: 0.2, values: rows.filter((row) => row.recommendation.primaryAction === ACTIONS.FOLD).map((row) => row.hand).slice(0, 85) }
+      ]);
+    }
+
     return nonEmptyGroups([
       { id: "RAISE", weight: 0.25, values: rows.filter((row) => row.recommendation.primaryAction === ACTIONS.THREE_BET).map((row) => row.hand) },
       { id: "CALL", weight: 0.35, values: rows.filter((row) => row.recommendation.primaryAction === ACTIONS.CALL).map((row) => row.hand) },
@@ -455,6 +502,8 @@
     const question = currentQuestion;
     if (question.mode === MODES.RFI) {
       el.spotLine.textContent = "First in - Hero " + question.position;
+    } else if (question.mode === MODES.FOUR_BET) {
+      el.spotLine.textContent = "Facing 3-bet - Hero opened, villain 3-bets";
     } else {
       el.spotLine.textContent = "Facing open - " + question.openerPosition + " opens, Hero " + question.heroPosition;
     }
@@ -572,6 +621,12 @@
       setActionButton(el.callActionBtn, "", false);
       return;
     }
+
+    if (mode === MODES.FOUR_BET) {
+      setActionButton(el.yesActionBtn, ACTIONS.FOUR_BET, true);
+      setActionButton(el.noActionBtn, ACTIONS.FOLD, true);
+      setActionButton(el.callActionBtn, "", false);
+    }
   }
 
   function setActionButton(button, action, visible) {
@@ -591,10 +646,10 @@
     setSelectOptions(el.chartModeSelect, [
       { id: MODES.RFI, label: "First in" },
       { id: MODES.VS_OPEN, label: "Facing open" },
-      { id: MODES.FOUR_BET, label: "4-bet reference" }
+      { id: MODES.FOUR_BET, label: "Facing 3-bet" }
     ]);
     setSelectOptions(el.chartProfileSelect, engine.OPENER_PROFILES);
-    setSelectOptions(el.chartSizeSelect, engine.OPEN_SIZE_CLASSES);
+    setSelectOptions(el.chartSizeSelect, LIVE_OPEN_SIZE_CLASSES);
     syncChartControlsFromSettings();
   }
 
@@ -616,18 +671,27 @@
 
     if (mode === MODES.RFI) {
       el.chartOpenerSelect.disabled = true;
+      el.chartProfileSelect.disabled = false;
+      el.chartSizeSelect.disabled = true;
       rebuildHeroOptions(mode, el.chartHeroSelect.value || "UTG");
     } else if (mode === MODES.FOUR_BET) {
       el.chartOpenerSelect.disabled = true;
       el.chartHeroSelect.disabled = true;
+      el.chartProfileSelect.disabled = true;
+      el.chartSizeSelect.disabled = true;
+      rebuildHeroOptions(mode);
     } else {
       el.chartOpenerSelect.disabled = false;
       el.chartHeroSelect.disabled = false;
+      el.chartProfileSelect.disabled = false;
+      el.chartSizeSelect.disabled = false;
       if (!el.chartOpenerSelect.value) {
         el.chartOpenerSelect.value = "MP3";
       }
       rebuildHeroOptions(mode, el.chartHeroSelect.value);
     }
+    updateChartControlVisibility(mode);
+    renderChartAssumption(mode, profile, size);
 
     const rows = buildMatrixCells(mode, profile, size);
     el.chartMatrix.textContent = "";
@@ -714,6 +778,30 @@
     el.chartDetail.append(title, meta, why);
   }
 
+  function updateChartControlVisibility(mode) {
+    el.chartOpenerControl.classList.toggle("hidden", mode !== MODES.VS_OPEN);
+    el.chartHeroControl.classList.toggle("hidden", mode === MODES.FOUR_BET);
+    el.chartProfileControl.classList.toggle("hidden", mode === MODES.FOUR_BET);
+    el.chartSizeControl.classList.toggle("hidden", mode !== MODES.VS_OPEN);
+  }
+
+  function renderChartAssumption(mode, profile, size) {
+    if (mode === MODES.RFI) {
+      el.chartAssumptionLine.textContent = "Live $1/$3 Default · 8-handed · 100-133bb · no ante · " + engine.profileLabel(profile) + " profile · Hero " + (el.chartHeroSelect.value || "UTG");
+      return;
+    }
+
+    if (mode === MODES.FOUR_BET) {
+      el.chartAssumptionLine.textContent = "Live $1/$3 Default · 8-handed · 100-133bb · no ante · Hero opened and faces a 3-bet · default 4-bet range";
+      return;
+    }
+
+    el.chartAssumptionLine.textContent = engine.getAssumptionLabel({
+      openerProfile: profile,
+      openSize: size
+    }) + " · " + (el.chartOpenerSelect.value || "MP3") + " opens, Hero " + (el.chartHeroSelect.value || "BTN");
+  }
+
   function rebuildHeroOptions(mode, preferredValue) {
     if (mode === MODES.RFI) {
       setSelectOptions(el.chartHeroSelect, engine.RFI_POSITIONS.map((id) => ({ id, label: id })));
@@ -756,6 +844,7 @@
     el.accuracyValue.textContent = formatPercent(stats.correct, stats.total);
     renderContextStatList(el.rfiStatsList, engine.RFI_POSITIONS.map((position) => ({ key: MODES.RFI + ":" + position, label: position })));
     renderContextStatList(el.vsOpenStatsList, engine.getValidVsOpenSpots().map((spot) => ({ key: MODES.VS_OPEN + ":" + spot.key, label: spot.key.replace(">", " -> ") })));
+    renderContextStatList(el.fourBetStatsList, [{ key: FOUR_BET_CONTEXT_KEY, label: "Default live 4-bet" }]);
     renderMissList();
   }
 
@@ -866,7 +955,7 @@
       const raw = safeGetStorage(STORAGE_KEYS.settings);
       const parsed = raw ? JSON.parse(raw) : {};
       const openerProfile = engine.OPENER_PROFILES.some((item) => item.id === parsed.openerProfile) ? parsed.openerProfile : fallback.openerProfile;
-      const openSize = engine.OPEN_SIZE_CLASSES.some((item) => item.id === parsed.openSize) ? parsed.openSize : fallback.openSize;
+      const openSize = LIVE_OPEN_SIZE_CLASSES.some((item) => item.id === parsed.openSize) ? parsed.openSize : fallback.openSize;
       const enabledRfiPositions = Array.isArray(parsed.enabledRfiPositions)
         ? engine.RFI_POSITIONS.filter((position) => parsed.enabledRfiPositions.includes(position))
         : fallback.enabledRfiPositions;
@@ -899,6 +988,7 @@
     engine.getValidVsOpenSpots().forEach((spot) => {
       byContext[MODES.VS_OPEN + ":" + spot.key] = { total: 0, correct: 0 };
     });
+    byContext[FOUR_BET_CONTEXT_KEY] = { total: 0, correct: 0 };
     return {
       total: 0,
       correct: 0,
