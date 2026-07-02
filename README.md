@@ -8,6 +8,7 @@ Source layout
 
 - `index.html` - static UI shell.
 - `range-engine.js` - single source of truth for live $1/$3 range presets, recommendation logic, grading, and chart output.
+- `trainer-scheduler.js` - adaptive weak-spot, coverage, and recent-question cooldown scoring for drills.
 - `app.js` - browser UI controller for drills, settings, stats, and charts.
 - `scripts/validate-ranges.js` - deterministic regression checks for key range decisions.
 
@@ -29,6 +30,7 @@ Local validation
 
 ```bash
 node --check app.js
+node --check trainer-scheduler.js
 node --check range-engine.js
 node scripts/validate-ranges.js
 ```

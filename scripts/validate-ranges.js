@@ -4,6 +4,7 @@
 const fs = require("fs");
 const path = require("path");
 const engine = require("../range-engine.js");
+const scheduler = require("../trainer-scheduler.js");
 
 let failures = 0;
 
@@ -37,6 +38,7 @@ const rootDir = path.join(__dirname, "..");
 const indexHtml = fs.readFileSync(path.join(rootDir, "index.html"), "utf8");
 const appJs = fs.readFileSync(path.join(rootDir, "app.js"), "utf8");
 const engineJs = fs.readFileSync(path.join(rootDir, "range-engine.js"), "utf8");
+const schedulerJs = fs.readFileSync(path.join(rootDir, "trainer-scheduler.js"), "utf8");
 
 const aqoBtnVsMp3Standard = rec({
   openerPosition: "MP3",
@@ -227,6 +229,102 @@ assert(
   "Parser expands pair-plus ranges correctly"
 );
 
+const weakBucketWeight = scheduler.scoreBucket({ total: 10, correct: 4 }, false);
+const masteredBucketWeight = scheduler.scoreBucket({ total: 10, correct: 10 }, false);
+const newBucketWeight = scheduler.scoreBucket({ total: 0, correct: 0 }, false);
+const recentWeakBucketWeight = scheduler.scoreBucket({ total: 10, correct: 4 }, true);
+assert(
+  weakBucketWeight > masteredBucketWeight && newBucketWeight > masteredBucketWeight,
+  "Adaptive scheduler prioritizes weak buckets and under-tested coverage over mastered buckets"
+);
+assert(
+  recentWeakBucketWeight < weakBucketWeight,
+  "Adaptive scheduler applies a cooldown to recently used weak contexts"
+);
+
+const weakHandWeight = scheduler.scoreHandOption({
+  record: { total: 4, correct: 1, lastSeen: 1, lastMissedAt: 1, correctStreak: 0 },
+  handMisses: 3,
+  sequence: 20
+});
+const masteredHandWeight = scheduler.scoreHandOption({
+  record: { total: 4, correct: 4, lastSeen: 19, lastMissedAt: 0, correctStreak: 4 },
+  handMisses: 0,
+  sequence: 20
+});
+const recentWeakHandWeight = scheduler.scoreHandOption({
+  record: { total: 4, correct: 1, lastSeen: 20, lastMissedAt: 20, correctStreak: 0 },
+  handMisses: 3,
+  sequence: 20,
+  isRecentQuestion: true
+});
+assert(
+  weakHandWeight > masteredHandWeight && recentWeakHandWeight < weakHandWeight,
+  "Adaptive scheduler boosts weak exact questions but cools down recent repeats"
+);
+
+const adaptiveStats = scheduler.ensureAdaptiveStats({
+  sequence: 0,
+  byQuestion: {},
+  recentQuestions: [],
+  recentContexts: [],
+  recentHands: []
+});
+scheduler.recordQuestionResult(adaptiveStats, {
+  questionKey: "VS_OPEN:MP3>BTN:AQo:BALANCED:STANDARD",
+  contextKey: "VS_OPEN:MP3>BTN",
+  hand: "AQo",
+  isPassing: false
+});
+scheduler.recordQuestionResult(adaptiveStats, {
+  questionKey: "VS_OPEN:MP3>BTN:AQo:BALANCED:STANDARD",
+  contextKey: "VS_OPEN:MP3>BTN",
+  hand: "AQo",
+  isPassing: true
+});
+assert(
+  adaptiveStats.sequence === 2 &&
+    adaptiveStats.byQuestion["VS_OPEN:MP3>BTN:AQo:BALANCED:STANDARD"].total === 2 &&
+    adaptiveStats.byQuestion["VS_OPEN:MP3>BTN:AQo:BALANCED:STANDARD"].correct === 1 &&
+    adaptiveStats.recentQuestions[0] === "VS_OPEN:MP3>BTN:AQo:BALANCED:STANDARD",
+  "Adaptive stats persist exact-question accuracy and recent-question cooldown state"
+);
+
+assert(
+  scheduler.isSafeQuestionKey("VS_OPEN:MP3>BTN:AQo:BALANCED:STANDARD") &&
+    scheduler.isSafeQuestionKey("FOUR_BET:default:KK:DEFAULT:NA") &&
+    scheduler.isSafeContextKey("FOUR_BET:default"),
+  "Adaptive stats reload accepts generated lowercase hand and context keys"
+);
+
+const restoredStats = scheduler.ensureAdaptiveStats({
+  sequence: 0,
+  byQuestion: {},
+  recentQuestions: [],
+  recentContexts: [],
+  recentHands: []
+});
+scheduler.restoreAdaptiveStats(restoredStats, {
+  sequence: 7,
+  byQuestion: {
+    "VS_OPEN:MP3>BTN:AQo:BALANCED:STANDARD": { total: 3, correct: 1, lastSeen: 6, lastMissedAt: 6, correctStreak: 0 },
+    "FOUR_BET:default:A5s:DEFAULT:NA": { total: 2, correct: 2, lastSeen: 5, lastMissedAt: 0, correctStreak: 2 }
+  },
+  recentQuestions: ["VS_OPEN:MP3>BTN:AQo:BALANCED:STANDARD", "FOUR_BET:default:A5s:DEFAULT:NA"],
+  recentContexts: ["VS_OPEN:MP3>BTN", "FOUR_BET:default"],
+  recentHands: ["AQo", "A5s", "bad-hand"]
+}, { validHands: engine.ALL_HAND_CLASSES });
+assert(
+  restoredStats.sequence === 7 &&
+    restoredStats.byQuestion["VS_OPEN:MP3>BTN:AQo:BALANCED:STANDARD"].total === 3 &&
+    restoredStats.byQuestion["FOUR_BET:default:A5s:DEFAULT:NA"].correct === 2 &&
+    restoredStats.recentQuestions.includes("FOUR_BET:default:A5s:DEFAULT:NA") &&
+    restoredStats.recentContexts.includes("FOUR_BET:default") &&
+    restoredStats.recentHands.includes("AQo") &&
+    !restoredStats.recentHands.includes("bad-hand"),
+  "Adaptive stats restore synthetic persisted exact-question and recent cooldown state end to end"
+);
+
 [
   "modeRfiBtn",
   "modeThreeBetBtn",
@@ -287,6 +385,34 @@ assert(
 );
 
 assert(
+  schedulerJs.includes("scoreBucket") &&
+    schedulerJs.includes("scoreHandOption") &&
+    schedulerJs.includes("isSafeQuestionKey") &&
+    appJs.includes("PotoTrainerScheduler") &&
+    appJs.includes("restoreAdaptiveStats(fallback, parsed") &&
+    appJs.includes("recordQuestionResult") &&
+    appJs.includes("adaptiveGroupMultiplier") &&
+    appJs.includes("recentQuestions"),
+  "Adaptive trainer scheduler is loaded, records exact question history, adapts category selection, and avoids stale app-only logic"
+);
+
+assert(
+  appJs.includes("Adaptive full deck (169)") &&
+    !appJs.includes("Uniform (169)") &&
+    appJs.includes("return drawAdaptiveHand(args, engine.ALL_HAND_CLASSES)") &&
+    appJs.includes("function isAdaptiveDrill()") &&
+    appJs.includes("return true;"),
+  "Every study plan stays adaptive; full-deck mode adapts over all 169 hands"
+);
+
+assert(
+  !appJs.includes(".slice(0, 55)") &&
+    !appJs.includes(".slice(0, 75)") &&
+    !appJs.includes(".slice(0, 85)"),
+  "Adaptive sampling keeps full fold/rest hand coverage instead of truncating rest groups"
+);
+
+assert(
   indexHtml.includes("Preflop Chart") &&
     indexHtml.includes("100-133bb") &&
     appJs.includes("updateChartControlVisibility"),
@@ -316,10 +442,12 @@ assert(
 );
 
 assert(
-  indexHtml.includes("./range-engine.js?v=20260701-unified-preflop") &&
-    indexHtml.includes("./app.js?v=20260701-unified-preflop") &&
+  indexHtml.includes("./range-engine.js?v=20260702-adaptive-study") &&
+    indexHtml.includes("./trainer-scheduler.js?v=20260702-adaptive-study") &&
+    indexHtml.includes("./app.js?v=20260702-adaptive-study") &&
     !indexHtml.includes('<script src="./app.js"></script>') &&
-    !indexHtml.includes('<script src="./range-engine.js"></script>'),
+    !indexHtml.includes('<script src="./range-engine.js"></script>') &&
+    !indexHtml.includes('<script src="./trainer-scheduler.js"></script>'),
   "Local scripts are versioned so deployed HTML does not pair with stale cached JS"
 );
 
