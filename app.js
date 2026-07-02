@@ -2,8 +2,13 @@
   "use strict";
 
   const engine = window.PotoRangeEngine;
+  const scheduler = window.PotoTrainerScheduler;
   const ACTIONS = engine.ACTIONS;
   const MODES = engine.MODES;
+
+  if (!scheduler) {
+    throw new Error("PotoTrainerScheduler failed to load.");
+  }
 
   const STORAGE_KEYS = {
     settings: "poto_preflop_trainer_settings_v2",
@@ -16,8 +21,8 @@
   };
 
   const SAMPLING_LABELS = {
-    [SAMPLING.UNIFORM]: "Uniform (169)",
-    [SAMPLING.BORDERLINE]: "Borderline-heavy"
+    [SAMPLING.UNIFORM]: "Adaptive full deck (169)",
+    [SAMPLING.BORDERLINE]: "Adaptive weak spots + coverage"
   };
 
   const DECISION_MIX = [
@@ -217,7 +222,7 @@
     });
 
     buildSamplingGrid(el.drillSamplingGrid, "drillSamplingMode", settings.drillSamplingMode);
-    el.decisionMixNote.innerHTML = '<p class="setting-note">The drill mixes first-in open/fold, facing-open fold/call/3-bet, and default facing-3-bet 4-bet decisions. Facing-open spots are exact by opener and hero position.</p>';
+    el.decisionMixNote.innerHTML = '<p class="setting-note">Adaptive study keeps weak spots in rotation, cools down recent exact questions, and still covers first-in, facing-open, and facing-3-bet decisions.</p>';
   }
 
   function resetToLiveDefaults() {
@@ -363,12 +368,13 @@
     const mode = drawDecisionMode();
 
     if (mode === MODES.RFI) {
-      const position = drawEven("context:RFI", settings.enabledRfiPositions, settings.enabledRfiPositions.join("|"));
-      const handClass = sampleHand({
+      const position = drawRfiPosition();
+      const handArgs = {
         mode,
         position,
         samplingMode: settings.drillSamplingMode
-      });
+      };
+      const handClass = sampleHand(handArgs);
       const recommendation = engine.recommend({
         mode,
         position,
@@ -381,16 +387,18 @@
         position,
         handClass,
         recommendation,
+        questionKey: buildQuestionKey(handArgs, handClass),
         statsContextKey: MODES.RFI + ":" + position,
         answered: false
       };
     }
 
     if (mode === MODES.FOUR_BET) {
-      const handClass = sampleHand({
+      const handArgs = {
         mode,
         samplingMode: settings.drillSamplingMode
-      });
+      };
+      const handClass = sampleHand(handArgs);
       const recommendation = engine.recommend({
         mode,
         hand: handClass
@@ -399,18 +407,20 @@
         mode,
         handClass,
         recommendation,
+        questionKey: buildQuestionKey(handArgs, handClass),
         statsContextKey: FOUR_BET_CONTEXT_KEY,
         answered: false
       };
     }
 
     const spot = drawVsOpenSpot();
-    const handClass = sampleHand({
+    const handArgs = {
       mode: MODES.VS_OPEN,
       openerPosition: spot.openerPosition,
       heroPosition: spot.heroPosition,
       samplingMode: settings.drillSamplingMode
-    });
+    };
+    const handClass = sampleHand(handArgs);
     const recommendation = engine.recommend({
       mode: MODES.VS_OPEN,
       openerPosition: spot.openerPosition,
@@ -426,6 +436,7 @@
       heroPosition: spot.heroPosition,
       handClass,
       recommendation,
+      questionKey: buildQuestionKey(handArgs, handClass),
       statsContextKey: MODES.VS_OPEN + ":" + spot.key,
       answered: false
     };
@@ -433,23 +444,181 @@
 
   function drawDecisionMode() {
     const signature = settings.enabledRfiPositions.join("|") + ":" + settings.enabledOpeners.join("|");
+    if (isAdaptiveDrill()) {
+      const options = DECISION_MIX.map((item) => ({
+        id: item.id,
+        weight: item.weight * scheduler.scoreBucket(modeStatsBucket(item.id), false)
+      }));
+      return drawWeightedOption(options).id;
+    }
     return drawWeighted("context:decision", DECISION_MIX, signature);
   }
 
+  function drawRfiPosition() {
+    if (!isAdaptiveDrill()) {
+      return drawEven("context:RFI", settings.enabledRfiPositions, settings.enabledRfiPositions.join("|"));
+    }
+    const options = settings.enabledRfiPositions.map((position) => ({
+      id: position,
+      value: position,
+      contextKey: MODES.RFI + ":" + position
+    }));
+    return drawAdaptiveContext(options).value;
+  }
+
   function drawVsOpenSpot() {
-    const valid = engine.getValidVsOpenSpots().filter((spot) => settings.enabledOpeners.includes(spot.openerPosition));
+    const valid = enabledVsOpenSpots();
+    if (isAdaptiveDrill()) {
+      const options = valid.map((spot) => ({
+        id: spot.key,
+        value: spot,
+        contextKey: MODES.VS_OPEN + ":" + spot.key
+      }));
+      return drawAdaptiveContext(options).value;
+    }
     return drawEven("context:" + MODES.VS_OPEN, valid, settings.enabledOpeners.join("|") + ":" + valid.length);
   }
 
   function sampleHand(args) {
     if (args.samplingMode === SAMPLING.UNIFORM) {
+      if (isAdaptiveDrill()) {
+        return drawAdaptiveHand(args, engine.ALL_HAND_CLASSES);
+      }
       return drawEven("hands:uniform:" + args.mode, engine.ALL_HAND_CLASSES, "all");
     }
 
     const groups = buildSamplingGroups(args);
-    const category = drawWeighted("mix:" + samplingKey(args), groups, groups.map((group) => group.id + ":" + group.values.length + ":" + group.weight).join("|"));
+    const category = drawSamplingCategory(args, groups);
     const picked = groups.find((group) => group.id === category) || groups[0];
+    if (isAdaptiveDrill()) {
+      return drawAdaptiveHand(args, picked.values);
+    }
     return drawEven("hands:" + samplingKey(args) + ":" + picked.id, picked.values, picked.values.join("|"));
+  }
+
+  function drawSamplingCategory(args, groups) {
+    const signature = groups.map((group) => group.id + ":" + group.values.length + ":" + group.weight).join("|");
+    if (!isAdaptiveDrill()) {
+      return drawWeighted("mix:" + samplingKey(args), groups, signature);
+    }
+    const options = groups.map((group) => ({
+      id: group.id,
+      weight: group.weight * adaptiveGroupMultiplier(args, group)
+    }));
+    return drawWeightedOption(options).id;
+  }
+
+  function adaptiveGroupMultiplier(args, group) {
+    const scores = group.values.map((hand) => {
+      const questionKey = buildQuestionKey(args, hand);
+      return scheduler.scoreHandOption({
+        record: stats.byQuestion[questionKey],
+        handMisses: stats.misses[hand],
+        sequence: stats.sequence
+      });
+    }).sort((a, b) => b - a);
+    const topCount = Math.min(6, scores.length);
+    if (!topCount) {
+      return 1;
+    }
+    const topAverage = scores.slice(0, topCount).reduce((sum, score) => sum + score, 0) / topCount;
+    return Math.min(2.6, Math.max(0.65, topAverage));
+  }
+
+  function drawAdaptiveContext(options) {
+    const recentContexts = new Set(stats.recentContexts || []);
+    const scored = options.map((option) => ({
+      ...option,
+      weight: scheduler.scoreBucket(stats.byContext[option.contextKey], recentContexts.has(option.contextKey))
+    }));
+    const fresh = scored.filter((option) => !recentContexts.has(option.contextKey));
+    return drawWeightedOption(fresh.length ? fresh : scored);
+  }
+
+  function drawAdaptiveHand(args, values) {
+    const recentQuestions = new Set(stats.recentQuestions || []);
+    const recentHands = new Set(stats.recentHands || []);
+    const options = values.map((hand) => {
+      const questionKey = buildQuestionKey(args, hand);
+      return {
+        id: hand,
+        value: hand,
+        questionKey,
+        weight: scheduler.scoreHandOption({
+          record: stats.byQuestion[questionKey],
+          handMisses: stats.misses[hand],
+          sequence: stats.sequence,
+          isRecentQuestion: recentQuestions.has(questionKey),
+          isRecentHand: recentHands.has(hand)
+        })
+      };
+    });
+    const fresh = options.filter((option) => !recentQuestions.has(option.questionKey));
+    return drawWeightedOption(fresh.length ? fresh : options).value;
+  }
+
+  function drawWeightedOption(options) {
+    if (!options.length) {
+      throw new Error("Cannot draw from empty weighted options.");
+    }
+    const totalWeight = options.reduce((sum, option) => sum + Math.max(0, option.weight || 0), 0);
+    if (!totalWeight) {
+      return options[Math.floor(Math.random() * options.length)];
+    }
+    let roll = Math.random() * totalWeight;
+    for (const option of options) {
+      roll -= Math.max(0, option.weight || 0);
+      if (roll <= 0) {
+        return option;
+      }
+    }
+    return options[options.length - 1];
+  }
+
+  function modeStatsBucket(mode) {
+    if (mode === MODES.RFI) {
+      return aggregateContextBuckets(settings.enabledRfiPositions.map((position) => MODES.RFI + ":" + position));
+    }
+    if (mode === MODES.FOUR_BET) {
+      return stats.byContext[FOUR_BET_CONTEXT_KEY] || { total: 0, correct: 0 };
+    }
+    return aggregateContextBuckets(enabledVsOpenSpots().map((spot) => MODES.VS_OPEN + ":" + spot.key));
+  }
+
+  function aggregateContextBuckets(keys) {
+    return keys.reduce((bucket, key) => {
+      const row = stats.byContext[key];
+      if (row && Number.isFinite(row.total) && Number.isFinite(row.correct)) {
+        bucket.total += Math.max(0, Math.floor(row.total));
+        bucket.correct += Math.max(0, Math.floor(row.correct));
+      }
+      return bucket;
+    }, { total: 0, correct: 0 });
+  }
+
+  function enabledVsOpenSpots() {
+    return engine.getValidVsOpenSpots().filter((spot) => settings.enabledOpeners.includes(spot.openerPosition));
+  }
+
+  function buildQuestionKey(args, hand) {
+    const contextKey = contextKeyForArgs(args);
+    const profile = args.mode === MODES.FOUR_BET ? "DEFAULT" : settings.openerProfile;
+    const size = args.mode === MODES.VS_OPEN ? settings.openSize : "NA";
+    return [contextKey, hand, profile, size].join(":");
+  }
+
+  function contextKeyForArgs(args) {
+    if (args.mode === MODES.RFI) {
+      return MODES.RFI + ":" + args.position;
+    }
+    if (args.mode === MODES.FOUR_BET) {
+      return FOUR_BET_CONTEXT_KEY;
+    }
+    return MODES.VS_OPEN + ":" + engine.spotKey(args.openerPosition, args.heroPosition);
+  }
+
+  function isAdaptiveDrill() {
+    return true;
   }
 
   function buildSamplingGroups(args) {
@@ -470,7 +639,7 @@
       return nonEmptyGroups([
         { id: "OPEN", weight: 0.35, values: rows.filter((row) => row.recommendation.primaryAction === ACTIONS.OPEN && row.recommendation.allowedActions.length === 1).map((row) => row.hand) },
         { id: "MIXED", weight: 0.45, values: rows.filter((row) => row.recommendation.allowedActions.length > 1).map((row) => row.hand) },
-        { id: "REST", weight: 0.2, values: rows.filter((row) => row.recommendation.primaryAction === ACTIONS.FOLD).map((row) => row.hand).slice(0, 55) }
+        { id: "REST", weight: 0.2, values: rows.filter((row) => row.recommendation.primaryAction === ACTIONS.FOLD).map((row) => row.hand) }
       ]);
     }
 
@@ -478,7 +647,7 @@
       return nonEmptyGroups([
         { id: "FOUR_BET", weight: 0.35, values: rows.filter((row) => row.recommendation.primaryAction === ACTIONS.FOUR_BET && row.recommendation.allowedActions.length === 1).map((row) => row.hand) },
         { id: "MIXED", weight: 0.45, values: rows.filter((row) => row.recommendation.allowedActions.length > 1).map((row) => row.hand) },
-        { id: "REST", weight: 0.2, values: rows.filter((row) => row.recommendation.primaryAction === ACTIONS.FOLD).map((row) => row.hand).slice(0, 85) }
+        { id: "REST", weight: 0.2, values: rows.filter((row) => row.recommendation.primaryAction === ACTIONS.FOLD).map((row) => row.hand) }
       ]);
     }
 
@@ -486,7 +655,7 @@
       { id: "RAISE", weight: 0.25, values: rows.filter((row) => row.recommendation.primaryAction === ACTIONS.THREE_BET).map((row) => row.hand) },
       { id: "CALL", weight: 0.35, values: rows.filter((row) => row.recommendation.primaryAction === ACTIONS.CALL).map((row) => row.hand) },
       { id: "MIXED", weight: 0.25, values: rows.filter((row) => row.recommendation.allowedActions.length > 1).map((row) => row.hand) },
-      { id: "REST", weight: 0.15, values: rows.filter((row) => row.recommendation.primaryAction === ACTIONS.FOLD).map((row) => row.hand).slice(0, 75) }
+      { id: "REST", weight: 0.15, values: rows.filter((row) => row.recommendation.primaryAction === ACTIONS.FOLD).map((row) => row.hand) }
     ]);
   }
 
@@ -512,7 +681,7 @@
       openerProfile: settings.openerProfile,
       openSize: settings.openSize
     });
-    el.samplingLine.textContent = "Decision drill · Sampling: " + SAMPLING_LABELS[settings.drillSamplingMode];
+    el.samplingLine.textContent = "Decision drill · Study plan: " + SAMPLING_LABELS[settings.drillSamplingMode];
     el.samplingLine.classList.remove("hidden");
     el.handLine.textContent = question.handClass;
 
@@ -558,6 +727,13 @@
       const hand = currentQuestion.handClass;
       stats.misses[hand] = (stats.misses[hand] || 0) + 1;
     }
+
+    scheduler.recordQuestionResult(stats, {
+      questionKey: currentQuestion.questionKey,
+      contextKey: currentQuestion.statsContextKey,
+      hand: currentQuestion.handClass,
+      isPassing: grade.isPassing
+    });
 
     saveStats();
     renderStats();
@@ -989,12 +1165,17 @@
       byContext[MODES.VS_OPEN + ":" + spot.key] = { total: 0, correct: 0 };
     });
     byContext[FOUR_BET_CONTEXT_KEY] = { total: 0, correct: 0 };
-    return {
+    return scheduler.ensureAdaptiveStats({
       total: 0,
       correct: 0,
       byContext,
-      misses: {}
-    };
+      misses: {},
+      sequence: 0,
+      byQuestion: {},
+      recentQuestions: [],
+      recentContexts: [],
+      recentHands: []
+    });
   }
 
   function loadStats() {
@@ -1036,9 +1217,13 @@
           }
         });
       }
+      scheduler.restoreAdaptiveStats(fallback, parsed, {
+        validHands: engine.ALL_HAND_CLASSES
+      });
       if (fallback.correct > fallback.total) {
         fallback.correct = fallback.total;
       }
+      fallback.sequence = Math.max(fallback.sequence, fallback.total);
       return fallback;
     } catch (err) {
       return fallback;
