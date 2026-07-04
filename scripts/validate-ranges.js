@@ -398,6 +398,7 @@ assert(
 
 assert(
   appJs.includes("Adaptive full deck (169)") &&
+    appJs.includes("Optimized weak spots") &&
     !appJs.includes("Uniform (169)") &&
     appJs.includes("return drawAdaptiveHand(args, engine.ALL_HAND_CLASSES)") &&
     appJs.includes("function isAdaptiveDrill()") &&
@@ -406,10 +407,17 @@ assert(
 );
 
 assert(
-  !appJs.includes(".slice(0, 55)") &&
+  appJs.includes('AUTOPILOT_VALUE_HANDS = new Set(["AA", "KK"])') &&
+    appJs.includes("function isAutopilotValueRow(row)") &&
+    appJs.includes("function isMixedDecisionRow(row)") &&
+    appJs.includes("mixedRows = rows.filter(isMixedDecisionRow)") &&
+    appJs.includes("pureRows = rows.filter((row) => !isMixedDecisionRow(row))") &&
+    appJs.includes('id: "MIXED", weight: 0.7') &&
+    !appJs.includes('id: "FOUR_BET", weight: 0.35') &&
+    !appJs.includes(".slice(0, 55)") &&
     !appJs.includes(".slice(0, 75)") &&
     !appJs.includes(".slice(0, 85)"),
-  "Adaptive sampling keeps full fold/rest hand coverage instead of truncating rest groups"
+  "Optimized sampling skips automatic AA/KK prompts, keeps mixed rows exclusive, and avoids truncated coverage"
 );
 
 assert(
@@ -442,9 +450,9 @@ assert(
 );
 
 assert(
-  indexHtml.includes("./range-engine.js?v=20260702-adaptive-study") &&
-    indexHtml.includes("./trainer-scheduler.js?v=20260702-adaptive-study") &&
-    indexHtml.includes("./app.js?v=20260702-adaptive-study") &&
+  indexHtml.includes("./range-engine.js?v=20260703-optimal-study") &&
+    indexHtml.includes("./trainer-scheduler.js?v=20260703-optimal-study") &&
+    indexHtml.includes("./app.js?v=20260703-optimal-study") &&
     !indexHtml.includes('<script src="./app.js"></script>') &&
     !indexHtml.includes('<script src="./range-engine.js"></script>') &&
     !indexHtml.includes('<script src="./trainer-scheduler.js"></script>'),

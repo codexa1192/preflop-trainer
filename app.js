@@ -22,8 +22,9 @@
 
   const SAMPLING_LABELS = {
     [SAMPLING.UNIFORM]: "Adaptive full deck (169)",
-    [SAMPLING.BORDERLINE]: "Adaptive weak spots + coverage"
+    [SAMPLING.BORDERLINE]: "Optimized weak spots"
   };
+  const AUTOPILOT_VALUE_HANDS = new Set(["AA", "KK"]);
 
   const DECISION_MIX = [
     { id: MODES.RFI, label: "First in", weight: 0.3 },
@@ -222,7 +223,7 @@
     });
 
     buildSamplingGrid(el.drillSamplingGrid, "drillSamplingMode", settings.drillSamplingMode);
-    el.decisionMixNote.innerHTML = '<p class="setting-note">Adaptive study keeps weak spots in rotation, cools down recent exact questions, and still covers first-in, facing-open, and facing-3-bet decisions.</p>';
+    el.decisionMixNote.innerHTML = '<p class="setting-note">Optimized study skips automatic AA/KK prompts, keeps weak spots in rotation, and still covers first-in, facing-open, and facing-3-bet decisions.</p>';
   }
 
   function resetToLiveDefaults() {
@@ -633,30 +634,41 @@
         openerProfile: settings.openerProfile,
         openSize: settings.openSize
       })
-    }));
+    })).filter((row) => !isAutopilotValueRow(row));
+    const mixedRows = rows.filter(isMixedDecisionRow);
+    const pureRows = rows.filter((row) => !isMixedDecisionRow(row));
 
     if (args.mode === MODES.RFI) {
       return nonEmptyGroups([
-        { id: "OPEN", weight: 0.35, values: rows.filter((row) => row.recommendation.primaryAction === ACTIONS.OPEN && row.recommendation.allowedActions.length === 1).map((row) => row.hand) },
-        { id: "MIXED", weight: 0.45, values: rows.filter((row) => row.recommendation.allowedActions.length > 1).map((row) => row.hand) },
-        { id: "REST", weight: 0.2, values: rows.filter((row) => row.recommendation.primaryAction === ACTIONS.FOLD).map((row) => row.hand) }
+        { id: "MIXED", weight: 0.5, values: mixedRows.map((row) => row.hand) },
+        { id: "OPEN", weight: 0.3, values: pureRows.filter((row) => row.recommendation.primaryAction === ACTIONS.OPEN).map((row) => row.hand) },
+        { id: "REST", weight: 0.2, values: pureRows.filter((row) => row.recommendation.primaryAction === ACTIONS.FOLD).map((row) => row.hand) }
       ]);
     }
 
     if (args.mode === MODES.FOUR_BET) {
       return nonEmptyGroups([
-        { id: "FOUR_BET", weight: 0.35, values: rows.filter((row) => row.recommendation.primaryAction === ACTIONS.FOUR_BET && row.recommendation.allowedActions.length === 1).map((row) => row.hand) },
-        { id: "MIXED", weight: 0.45, values: rows.filter((row) => row.recommendation.allowedActions.length > 1).map((row) => row.hand) },
-        { id: "REST", weight: 0.2, values: rows.filter((row) => row.recommendation.primaryAction === ACTIONS.FOLD).map((row) => row.hand) }
+        { id: "MIXED", weight: 0.7, values: mixedRows.map((row) => row.hand) },
+        { id: "REST", weight: 0.3, values: pureRows.filter((row) => row.recommendation.primaryAction === ACTIONS.FOLD).map((row) => row.hand) }
       ]);
     }
 
     return nonEmptyGroups([
-      { id: "RAISE", weight: 0.25, values: rows.filter((row) => row.recommendation.primaryAction === ACTIONS.THREE_BET).map((row) => row.hand) },
-      { id: "CALL", weight: 0.35, values: rows.filter((row) => row.recommendation.primaryAction === ACTIONS.CALL).map((row) => row.hand) },
-      { id: "MIXED", weight: 0.25, values: rows.filter((row) => row.recommendation.allowedActions.length > 1).map((row) => row.hand) },
-      { id: "REST", weight: 0.15, values: rows.filter((row) => row.recommendation.primaryAction === ACTIONS.FOLD).map((row) => row.hand) }
+      { id: "MIXED", weight: 0.45, values: mixedRows.map((row) => row.hand) },
+      { id: "RAISE", weight: 0.2, values: pureRows.filter((row) => row.recommendation.primaryAction === ACTIONS.THREE_BET).map((row) => row.hand) },
+      { id: "CALL", weight: 0.25, values: pureRows.filter((row) => row.recommendation.primaryAction === ACTIONS.CALL).map((row) => row.hand) },
+      { id: "REST", weight: 0.1, values: pureRows.filter((row) => row.recommendation.primaryAction === ACTIONS.FOLD).map((row) => row.hand) }
     ]);
+  }
+
+  function isAutopilotValueRow(row) {
+    return AUTOPILOT_VALUE_HANDS.has(row.hand) &&
+      row.recommendation.allowedActions.length === 1 &&
+      row.recommendation.primaryAction !== ACTIONS.FOLD;
+  }
+
+  function isMixedDecisionRow(row) {
+    return row.recommendation.allowedActions.length > 1 || Boolean(row.recommendation.frequency);
   }
 
   function nonEmptyGroups(groups) {
