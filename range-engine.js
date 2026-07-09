@@ -48,6 +48,17 @@
   ];
 
   const POSITION_ORDER = ["UTG", "UTG1", "MP1", "MP2", "MP3", "CO", "BTN", "SB", "BB"];
+  const POSITION_LABELS = {
+    UTG: "UTG",
+    UTG1: "UTG+1",
+    MP1: "MP",
+    MP2: "LJ",
+    MP3: "HJ",
+    CO: "CO",
+    BTN: "BTN",
+    SB: "SB",
+    BB: "BB"
+  };
   const RFI_POSITIONS = ["UTG", "UTG1", "MP1", "MP2", "MP3", "CO", "BTN", "SB"];
   const VS_OPEN_OPENERS = ["UTG", "UTG1", "MP1", "MP2", "MP3", "CO", "BTN"];
   const DEFAULT_PROFILE = "BALANCED";
@@ -55,13 +66,11 @@
   const DEFAULT_PRESET_ID = "live-1-3-default";
 
   const TEXT = {
-    position: "Position drives the decision: the later hero acts, the more hands can continue profitably.",
-    domination: "Offsuit broadways lose value against early or tight opens because they are often dominated by AQ, AK, and better suited broadways.",
-    blockers: "Ace blockers make selective 3-bets better than random bluffs, especially when the hand plays poorly as a flat.",
     size: "Large live opens reduce implied odds and make dominated calls worse; smaller opens let position and suitedness realize more equity."
   };
 
-  const THREE_BET_BLUFF_CANDIDATES = "A5s, A4s, A3s, A2s, KJs, KTs, QTs, JTs, T9s";
+  const THREE_BET_BLUFF_CANDIDATES = "A5s, A4s, A3s, A2s";
+  const THREE_BET_VALUE_CANDIDATES = "QQ+, AK";
 
   function spec(threeBet, call, mixed, note) {
     return {
@@ -86,7 +95,7 @@
     [DEFAULT_PRESET_ID]: {
       id: DEFAULT_PRESET_ID,
       name: "Live $1/$3 Default",
-      assumptions: "Live $1/$3 Default · 8-handed · 100-133bb · no ante",
+      assumptions: "Live $1/$3 Default · 9-handed · 100-133bb · no ante",
       rfi: {
         TIGHT: {
           UTG: { open: "99+, AJs+, KQs, AQo+", mixed: "88, ATs, KJs, QJs" },
@@ -206,7 +215,7 @@
             "Small blind versus cutoff is aggressive and position-aware."
           ),
           CO_BB: spec(
-            "TT+, AK, AQs, AQo, A5s, A4s",
+            "TT+, AK, AQs, AQo, A4s",
             "22, 33, 44, 55, 66, 77, 88, 99, AJs, ATs, A9s, A8s, KQs, KJs, KTs, K9s, QJs, QTs, Q9s, JTs, J9s, T9s, T8s, 98s, 87s, 76s, AJo, KQo, KJo, QJo",
             [
               mix("A7s, A5s, Q8s, J8s, T7s", ACTIONS.CALL, [ACTIONS.CALL, ACTIONS.FOLD], "Defend versus standard sizes; fold versus larger/tighter opens.", "Big blind price allows more suited continues, but weak kickers are still marginal.")
@@ -358,7 +367,13 @@
     const preset = RANGE_PRESETS[normalizePresetId(args && args.presetId)];
     const profile = profileLabel(args && args.openerProfile);
     const size = sizeLabel(args && args.openSize);
-    return preset.assumptions + " · " + size + " · " + profile;
+    if (args && args.mode === MODES.RFI) {
+      return preset.assumptions + " · " + profile + " RFI style";
+    }
+    if (args && args.mode === MODES.VS_OPEN) {
+      return preset.assumptions + " · " + size + " · " + profile + " opener";
+    }
+    return preset.assumptions;
   }
 
   function profileLabel(profile) {
@@ -371,15 +386,309 @@
     return (OPEN_SIZE_CLASSES.find((item) => item.id === id) || OPEN_SIZE_CLASSES[1]).label;
   }
 
+  function positionLabel(position) {
+    return POSITION_LABELS[position] || String(position || "");
+  }
+
+  function attachCoach(args, recommendation) {
+    return {
+      ...recommendation,
+      coach: buildCoachNotes(args, recommendation)
+    };
+  }
+
+  function buildCoachNotes(args, recommendation) {
+    const hand = normalizeHand(args.hand || recommendation.hand);
+    const traits = classifyHand(hand);
+    if (recommendation.mode === MODES.RFI) {
+      return buildRfiCoach(args, recommendation, traits);
+    }
+    if (recommendation.mode === MODES.FOUR_BET) {
+      return buildFourBetCoach(recommendation, traits);
+    }
+    return buildVsOpenCoach(args, recommendation, traits);
+  }
+
+  function buildRfiCoach(args, recommendation, traits) {
+    const position = positionLabel(args.position);
+    const isMixed = recommendation.allowedActions.length > 1 || Boolean(recommendation.frequency);
+    let reason;
+    if (isMixed) {
+      reason = traits.hand + " sits on the " + position + " opening edge: " + describeHandStrength(traits) +
+        ". Opening is the default, but folding is also reasonable when the players behind make the spot worse.";
+    } else if (recommendation.primaryAction === ACTIONS.OPEN) {
+      reason = traits.hand + " clears the " + position + " opening threshold because " + describeHandStrength(traits) + ".";
+    } else {
+      reason = traits.hand + " stays outside the " + position + " opening range because " + describeRfiLimitation(traits) + ".";
+    }
+
+    let adjustment = recommendation.frequency;
+    if (!adjustment && ["AA", "KK"].includes(traits.hand) && recommendation.primaryAction === ACTIONS.OPEN) {
+      adjustment = "This hand remains an open in every supported range profile.";
+    } else if (!adjustment) {
+      adjustment = args.position === "SB"
+        ? "Tighten the bottom when the big blind defends or 3-bets aggressively."
+        : "Tighten the bottom with aggressive players behind; widen only when the table is passive.";
+    }
+
+    let takeaway;
+    if (["AA", "KK"].includes(traits.hand) && recommendation.primaryAction === ACTIONS.OPEN) {
+      takeaway = "Premium pairs open from every position; the close decisions live much lower in the range.";
+    } else if (traits.isPair) {
+      takeaway = "The pocket-pair opening threshold widens by position: smaller pairs enter as fewer players remain.";
+    } else if (args.position === "SB") {
+      takeaway = "Small blind is late preflop but out of position after the flop, with the big blind still to act.";
+    } else if (POSITION_ORDER.indexOf(args.position) <= POSITION_ORDER.indexOf("MP1")) {
+      takeaway = "Early position starts with pairs, strong aces, and strong suited broadways; weak offsuit hands wait.";
+    } else {
+      takeaway = "As position improves, add suited and connected hands before weak disconnected offsuit hands.";
+    }
+
+    return {
+      reason: cleanSentence(reason),
+      adjustment: cleanSentence(plainAdjustment(adjustment)),
+      takeaway: cleanSentence(takeaway),
+      actionNotes: buildRfiActionNotes(recommendation, traits, position)
+    };
+  }
+
+  function buildVsOpenCoach(args, recommendation, traits) {
+    const opener = positionLabel(args.openerPosition);
+    const hero = positionLabel(args.heroPosition);
+    const isBlind = args.heroPosition === "SB" || args.heroPosition === "BB";
+    const isMixed = recommendation.allowedActions.length > 1 || Boolean(recommendation.frequency);
+    const boundaryLead = isMixed ? "This is a boundary decision. " : "";
+    let reason;
+
+    if (recommendation.primaryAction === ACTIONS.THREE_BET) {
+      if (traits.isSuitedAce && traits.lowRankIndex >= RANK_INDEX["5"]) {
+        reason = boundaryLead + traits.hand + " can 3-bet because the ace blocks some of Villain's strongest continues, while suitedness gives it ways to improve when called.";
+      } else if (parseRangeList(THREE_BET_VALUE_CANDIDATES).has(traits.hand)) {
+        reason = boundaryLead + traits.hand + " is strong enough to build the pot against the " + opener + " opening range and continue versus resistance.";
+      } else {
+        reason = boundaryLead + traits.hand + " is strong enough to 3-bet against the " + opener + " opening range; raising is better than making a thin passive call.";
+      }
+    } else if (recommendation.primaryAction === ACTIONS.CALL) {
+      if (traits.isPair) {
+        reason = boundaryLead + traits.hand + " keeps solid showdown value as a pocket pair and can flop a set; the price and this exact " + hero + " spot make a call reasonable.";
+      } else if (traits.isSuited) {
+        reason = boundaryLead + traits.hand + " combines suitedness with enough high-card or connected strength to continue without inflating the pot.";
+      } else {
+        reason = boundaryLead + traits.hand + " has enough raw high-card strength to continue here, but its offsuit shape makes position and domination important.";
+      }
+    } else {
+      reason = boundaryLead + traits.hand + " folds because " + describeHandLimitation(traits) +
+        (isBlind ? "; the blind discount does not erase the postflop position problem" : " against the " + opener + " range") + ".";
+    }
+
+    const isPurePremiumRaise = recommendation.primaryAction === ACTIONS.THREE_BET &&
+      recommendation.allowedActions.length === 1 && parseRangeList(THREE_BET_VALUE_CANDIDATES).has(traits.hand);
+    let adjustment = recommendation.frequency;
+    if (isPurePremiumRaise) {
+      adjustment = "This hand remains a value 3-bet across the supported opener profiles and sizes.";
+    } else if (recommendation.primaryAction === ACTIONS.FOLD && args.openerProfile === "TIGHT") {
+      adjustment = "The selected tight profile supports folding; reconsider only if the opener proves wider than described.";
+    } else if (recommendation.primaryAction === ACTIONS.FOLD && args.openSize === "LARGE") {
+      adjustment = "The selected 4.5-6bb size supports folding; a smaller price is the main reason to reconsider.";
+    } else if (!adjustment && args.openSize === "LARGE") {
+      adjustment = "A 4.5-6bb open makes thin calls less attractive; keep the bottom of the continue range tight.";
+    } else if (!adjustment && args.openerProfile === "TIGHT") {
+      adjustment = "Against a tight opener, remove thin calls and speculative 3-bets first.";
+    } else if (!adjustment && args.openerProfile === "LOOSE") {
+      adjustment = "Against a loose opener, widen selectively with position, suitedness, and blockers rather than any two cards.";
+    } else if (!adjustment) {
+      adjustment = "A larger open or tighter opener pushes the weakest continue toward fold; a looser opener moves it the other way.";
+    }
+
+    let takeaway;
+    if (isPurePremiumRaise) {
+      takeaway = "Premium pairs and AK raise for value; do not let a large open turn them passive.";
+    } else if (traits.isPair) {
+      if (recommendation.primaryAction === ACTIONS.THREE_BET) {
+        takeaway = "Strong pocket pairs 3-bet for value; lower pairs usually call or fold based on price and position.";
+      } else if (recommendation.primaryAction === ACTIONS.CALL) {
+        takeaway = "Pocket pairs often call to keep the pot controlled and retain their chance to flop a set.";
+      } else {
+        takeaway = "Small pocket pairs need enough price and position; set potential alone does not require a call.";
+      }
+    } else if (args.heroPosition === "SB") {
+      takeaway = "Small blind plays the rest of the hand out of position: prefer a clear 3-bet or disciplined fold over a marginal call.";
+    } else if (args.heroPosition === "BB") {
+      takeaway = "Big blind gets the best preflop price but still plays out of position after the flop.";
+    } else if (args.openerPosition === "UTG" || args.openerPosition === "UTG1") {
+      if (traits.isSuited) {
+        takeaway = "Suitedness helps against early position, but it does not erase the opener's stronger starting range.";
+      } else {
+        takeaway = "Versus early position, domination matters more than how strong an offsuit hand looks.";
+      }
+    } else {
+      takeaway = "In position, continue suited and connected hands before domination-prone offsuit hands.";
+    }
+
+    return {
+      reason: cleanSentence(reason),
+      adjustment: cleanSentence(plainAdjustment(adjustment)),
+      takeaway: cleanSentence(takeaway),
+      actionNotes: buildVsOpenActionNotes(recommendation, traits)
+    };
+  }
+
+  function buildFourBetCoach(recommendation, traits) {
+    const reason = recommendation.primaryAction === ACTIONS.FOUR_BET
+      ? traits.hand + " is in the value-heavy 4-bet range."
+      : traits.hand + " is not a default 4-bet without opponent and sizing context.";
+    return {
+      reason: cleanSentence(reason),
+      adjustment: "Only widen a 4-bet range with a clear read and fully specified positions and sizing.",
+      takeaway: "Facing a live 3-bet requires position, size, and a call range; hand class alone is not a full decision.",
+      actionNotes: {}
+    };
+  }
+
+  function buildRfiActionNotes(recommendation, traits, position) {
+    return {
+      [ACTIONS.OPEN]: recommendation.primaryAction === ACTIONS.OPEN
+        ? "Opening matches the selected " + position + " range."
+        : "Opening reaches below the selected " + position + " threshold because " + describeRfiLimitation(traits) + ".",
+      [ACTIONS.FOLD]: recommendation.primaryAction === ACTIONS.FOLD
+        ? "Folding keeps the bottom of the " + position + " range disciplined."
+        : (recommendation.allowedActions.includes(ACTIONS.FOLD)
+          ? "Folding is a reasonable fallback when aggressive players behind make this boundary hand worse."
+          : "Folding gives up a hand that the selected " + position + " range opens by default.")
+    };
+  }
+
+  function buildVsOpenActionNotes(recommendation, traits) {
+    const notes = {};
+    const allowed = new Set(recommendation.allowedActions);
+    notes[ACTIONS.FOLD] = recommendation.primaryAction === ACTIONS.FOLD
+      ? "Folding avoids a thin continue with " + traits.hand + " under these assumptions."
+      : (allowed.has(ACTIONS.FOLD)
+        ? "Folding is a reasonable fallback when the opener or price is worse than the selected baseline."
+        : "Folding is more conservative than this range because " + describeHandStrength(traits) + ".");
+
+    if (recommendation.primaryAction === ACTIONS.CALL) {
+      notes[ACTIONS.CALL] = "Calling keeps the pot controlled while using this hand's showdown value or playability.";
+    } else if (allowed.has(ACTIONS.CALL)) {
+      notes[ACTIONS.CALL] = "Calling can work if the opener proves wider or the price is smaller; under the selected assumptions it is not the baseline.";
+    } else if (recommendation.primaryAction === ACTIONS.THREE_BET) {
+      notes[ACTIONS.CALL] = "Calling gives up the initiative with a hand this range prefers to raise.";
+    } else {
+      notes[ACTIONS.CALL] = "Calling is too thin here because " + describeHandLimitation(traits) + ".";
+    }
+
+    if (recommendation.primaryAction === ACTIONS.THREE_BET) {
+      notes[ACTIONS.THREE_BET] = "3-betting matches the range's plan to raise this hand for value or pressure.";
+    } else if (allowed.has(ACTIONS.THREE_BET)) {
+      notes[ACTIONS.THREE_BET] = "3-betting can work when the opener folds too often; under the selected assumptions it is not the baseline.";
+    } else if (recommendation.primaryAction === ACTIONS.CALL) {
+      notes[ACTIONS.THREE_BET] = "3-betting builds a larger pot with a hand this range prefers to play as a call.";
+    } else {
+      notes[ACTIONS.THREE_BET] = "3-betting asks for fold pressure or value that this hand and selected opener do not provide by default.";
+    }
+    return notes;
+  }
+
+  function classifyHand(hand) {
+    const isPair = hand.length === 2;
+    const isSuited = hand.endsWith("s");
+    const isOffsuit = hand.endsWith("o");
+    const highRank = hand[0] || "";
+    const lowRank = hand[1] || "";
+    const highRankIndex = RANK_INDEX[highRank];
+    const lowRankIndex = RANK_INDEX[lowRank];
+    const gap = isPair || highRankIndex === undefined || lowRankIndex === undefined
+      ? 0
+      : Math.max(0, lowRankIndex - highRankIndex - 1);
+    return {
+      hand,
+      gap,
+      highRank,
+      highRankIndex,
+      isBroadway: !isPair && [highRank, lowRank].every((rank) => ["A", "K", "Q", "J", "T"].includes(rank)),
+      isOffsuit,
+      isPair,
+      isSuited,
+      isSuitedAce: isSuited && highRank === "A",
+      lowRank,
+      lowRankIndex
+    };
+  }
+
+  function describeHandStrength(traits) {
+    if (traits.isPair) {
+      return "it is a pocket pair with solid raw equity and set potential";
+    }
+    if (traits.isSuitedAce) {
+      return "it combines an ace blocker with suited playability";
+    }
+    if (traits.isSuited && traits.isBroadway) {
+      return "it has two strong cards, suitedness, and good postflop playability";
+    }
+    if (traits.isSuited && traits.gap <= 1) {
+      return "its suited, connected shape can make straights, flushes, and strong draws";
+    }
+    if (traits.isBroadway) {
+      return "its high-card strength is useful even though it is offsuit";
+    }
+    if (traits.highRank === "A") {
+      return "the ace supplies high-card strength and blocker value";
+    }
+    if (traits.isSuited) {
+      return "suitedness gives it more ways to improve after the flop";
+    }
+    return "its cards have enough rank and connection for this range";
+  }
+
+  function describeHandLimitation(traits) {
+    if (traits.isPair) {
+      return "set potential alone does not overcome the price and position";
+    }
+    if (traits.isBroadway && traits.isOffsuit) {
+      return "it is offsuit and often dominated by stronger broadways";
+    }
+    if (traits.isSuited) {
+      return "suitedness alone does not make up for weak rank or poor connection";
+    }
+    if (traits.highRank === "A") {
+      return "the weak kicker and offsuit shape create domination problems";
+    }
+    return "it lacks suitedness, high-card strength, and useful connection";
+  }
+
+  function describeRfiLimitation(traits) {
+    if (traits.isPair) {
+      return "this pocket pair is below the selected first-in threshold from this position";
+    }
+    return describeHandLimitation(traits);
+  }
+
+  function cleanSentence(text) {
+    const value = String(text || "").trim().replace(/[.\s]+$/, "");
+    return value ? value + "." : "";
+  }
+
+  function plainAdjustment(text) {
+    return String(text || "")
+      .replace(/low-frequency/gi, "occasional")
+      .replace(/with fold equity/gi, "when the opener is likely to fold")
+      .replace(/over-folding/gi, "folding too often")
+      .replace(/over-folds/gi, "folds too often")
+      .replace(/3-bet heavy/gi, "likely to re-raise")
+      .replace(/clear table edge/gi, "clear postflop advantage");
+  }
+
   function recommend(args) {
     const mode = args && args.mode ? args.mode : MODES.RFI;
+    let recommendation;
     if (mode === MODES.RFI) {
-      return recommendRfi(args);
+      recommendation = recommendRfi(args);
+    } else if (mode === MODES.FOUR_BET) {
+      recommendation = recommendFourBet(args);
+    } else {
+      recommendation = recommendVsOpen(args);
     }
-    if (mode === MODES.FOUR_BET) {
-      return recommendFourBet(args);
-    }
-    return recommendVsOpen(args);
+    return attachCoach(args || {}, recommendation);
   }
 
   function getChartCellRecommendation(args) {
@@ -401,9 +710,9 @@
         hand,
         primaryAction: ACTIONS.OPEN,
         allowedActions: [ACTIONS.OPEN, ACTIONS.FOLD],
-        frequency: "Open at normal/passive tables; fold at tougher tables or short stacks.",
-        explanation: position + " RFI is close. " + TEXT.position + " This hand is playable in a balanced live range, but table texture can make folding acceptable.",
-        contextLabel: "RFI " + position,
+        frequency: "Open more often at passive tables; fold more often with aggressive players behind.",
+        explanation: hand + " is near the " + positionLabel(position) + " opening boundary, so the players behind can move the decision.",
+        contextLabel: "RFI " + positionLabel(position),
         rangeLabel: row.open + " | mixed: " + row.mixed
       });
     }
@@ -414,8 +723,8 @@
         hand,
         primaryAction: ACTIONS.OPEN,
         allowedActions: [ACTIONS.OPEN],
-        explanation: "Open. " + position + " is in the live $1/$3 " + profileLabel(profile).toLowerCase() + " RFI range. " + TEXT.position,
-        contextLabel: "RFI " + position,
+        explanation: "Open. " + hand + " is inside the live $1/$3 " + profileLabel(profile).toLowerCase() + " " + positionLabel(position) + " opening range.",
+        contextLabel: "RFI " + positionLabel(position),
         rangeLabel: row.open
       });
     }
@@ -425,8 +734,8 @@
       hand,
       primaryAction: ACTIONS.FOLD,
       allowedActions: [ACTIONS.FOLD],
-      explanation: "Fold. This hand is outside the " + position + " live $1/$3 RFI range under the selected assumptions.",
-      contextLabel: "RFI " + position,
+      explanation: "Fold. " + hand + " is outside the " + positionLabel(position) + " live $1/$3 opening range under the selected assumptions.",
+      contextLabel: "RFI " + positionLabel(position),
       rangeLabel: row.open + (row.mixed ? " | mixed: " + row.mixed : "")
     });
   }
@@ -449,7 +758,7 @@
         primaryAction: ACTIONS.FOLD,
         allowedActions: [ACTIONS.FOLD],
         explanation: "Fold. This is not a supported live $1/$3 facing-open spot in the trainer.",
-        contextLabel: openerPosition + " opens, Hero " + heroPosition,
+        contextLabel: positionLabel(openerPosition) + " opens, Hero " + positionLabel(heroPosition),
         rangeLabel: "Unsupported spot"
       });
     }
@@ -463,7 +772,7 @@
         allowedActions: override.allowedActions,
         frequency: override.frequency,
         explanation: override.explanation,
-        contextLabel: openerPosition + " opens, Hero " + heroPosition,
+        contextLabel: positionLabel(openerPosition) + " opens, Hero " + positionLabel(heroPosition),
         rangeLabel: buildTemplateRangeLabel(template)
       });
     }
@@ -476,7 +785,7 @@
       heroPosition,
       hand
     });
-    rec.contextLabel = openerPosition + " opens, Hero " + heroPosition;
+    rec.contextLabel = positionLabel(openerPosition) + " opens, Hero " + positionLabel(heroPosition);
     rec.rangeLabel = buildTemplateRangeLabel(template);
     return rec;
   }
@@ -550,7 +859,7 @@
           allowedActions: rule.allowedActions,
           frequency: rule.frequency,
           explanation: rule.explanation + " " + TEXT.size,
-          contextLabel: openerPosition + " opens, Hero " + heroPosition,
+          contextLabel: positionLabel(openerPosition) + " opens, Hero " + positionLabel(heroPosition),
           rangeLabel: buildTemplateRangeLabel(template)
         });
       }
@@ -558,16 +867,19 @@
 
     if (threeBetSet.has(hand)) {
       const isBluff = parseRangeList(THREE_BET_BLUFF_CANDIDATES).has(hand);
+      const isClearValue = parseRangeList(THREE_BET_VALUE_CANDIDATES).has(hand);
       return makeRecommendation({
         mode: MODES.VS_OPEN,
         hand,
         primaryAction: ACTIONS.THREE_BET,
         allowedActions: [ACTIONS.THREE_BET],
-        actionTag: isBluff ? "bluff" : "value",
+        actionTag: isBluff ? "blocker bluff" : (isClearValue ? "value" : ""),
         explanation: isBluff
-          ? "3-bet bluff/semi-bluff. This hand uses blocker value or suited playability to pressure opens without flatting dominated holdings. " + TEXT.blockers
-          : "3-bet for value. This hand is strong enough to raise against the selected opener and hero position.",
-        contextLabel: openerPosition + " opens, Hero " + heroPosition,
+          ? "3-bet as a blocker bluff. The ace removes some premium combinations and suitedness provides a fallback when called."
+          : (isClearValue
+            ? "3-bet for value. This hand is strong enough to raise against the selected opener and hero position."
+            : "3-bet for strength and initiative. Raising is better than making a thin passive call in this spot."),
+        contextLabel: positionLabel(openerPosition) + " opens, Hero " + positionLabel(heroPosition),
         rangeLabel: buildTemplateRangeLabel(template)
       });
     }
@@ -578,8 +890,8 @@
         hand,
         primaryAction: ACTIONS.CALL,
         allowedActions: [ACTIONS.CALL],
-        explanation: "Call. Hero has enough equity and playability for this exact position. " + TEXT.position,
-        contextLabel: openerPosition + " opens, Hero " + heroPosition,
+        explanation: "Call. " + hand + " has enough strength and playability for this exact " + positionLabel(heroPosition) + " spot.",
+        contextLabel: positionLabel(openerPosition) + " opens, Hero " + positionLabel(heroPosition),
         rangeLabel: buildTemplateRangeLabel(template)
       });
     }
@@ -589,8 +901,8 @@
       hand,
       primaryAction: ACTIONS.FOLD,
       allowedActions: [ACTIONS.FOLD],
-      explanation: "Fold. This hand is outside the continue range for this opener, hero position, profile, and sizing. " + TEXT.domination,
-      contextLabel: openerPosition + " opens, Hero " + heroPosition,
+      explanation: "Fold. " + hand + " is outside the continue range for this opener, hero position, profile, and sizing because " + describeHandLimitation(classifyHand(hand)) + ".",
+      contextLabel: positionLabel(openerPosition) + " opens, Hero " + positionLabel(heroPosition),
       rangeLabel: buildTemplateRangeLabel(template)
     });
   }
@@ -600,6 +912,23 @@
     const isInPosition = POSITION_ORDER.indexOf(heroPosition) < POSITION_ORDER.indexOf("SB");
     const isEarlyOpen = openerPosition === "UTG" || openerPosition === "UTG1";
     const isLateOpen = openerPosition === "CO" || openerPosition === "BTN";
+    const frequencyText = String(rec.frequency || "").toLowerCase();
+    const selectedConditionFavorsFold = rec.primaryAction !== ACTIONS.FOLD &&
+      rec.allowedActions.includes(ACTIONS.FOLD) &&
+      ((profile === "TIGHT" && frequencyText.includes("tight")) ||
+        (size === "LARGE" && /large|larger|big sizing/.test(frequencyText)));
+
+    if (selectedConditionFavorsFold) {
+      return makeRecommendation({
+        ...rec,
+        primaryAction: ACTIONS.FOLD,
+        allowedActions: [ACTIONS.FOLD, rec.primaryAction],
+        frequency: profile === "TIGHT"
+          ? "Fold by default under the selected tight profile; continue only if the opener proves wider."
+          : "Fold by default against the selected large size; continue only with a strong table-specific reason.",
+        explanation: "The selected opener profile or size moves this boundary hand to a fold."
+      });
+    }
 
     if (profile === "TIGHT" && rec.primaryAction === ACTIONS.CALL && parseRangeList("AQo, AJo, KQo, KJo, QJo, ATo, KTs, QTs, JTs, T9s, 98s, 22, 33, 44, 55, 66").has(hand)) {
       return makeRecommendation({
@@ -607,7 +936,7 @@
         primaryAction: ACTIONS.FOLD,
         allowedActions: [ACTIONS.FOLD],
         frequency: "",
-        explanation: "Fold versus a tight opener. " + TEXT.domination + " Tight live ranges make the normal call too thin."
+        explanation: "Fold versus a tight opener. " + describeHandLimitation(classifyHand(hand)) + "; the normal call is too thin against this range."
       });
     }
 
@@ -631,7 +960,7 @@
       });
     }
 
-    if (profile === "LOOSE" && rec.primaryAction === ACTIONS.FOLD && !isEarlyOpen && parseRangeList("AQo, AJo, KQo, KJo, QJo, ATo, KTs, QTs, JTs, T9s, 98s, A5s, A4s, 66, 55").has(hand)) {
+    if (profile === "LOOSE" && size !== "LARGE" && rec.primaryAction === ACTIONS.FOLD && !isEarlyOpen && parseRangeList("AQo, AJo, KQo, KJo, QJo, ATo, KTs, QTs, JTs, T9s, 98s, A5s, A4s, 66, 55").has(hand)) {
       const action = isLateOpen ? ACTIONS.THREE_BET : ACTIONS.CALL;
       return makeRecommendation({
         ...rec,
@@ -682,8 +1011,10 @@
 
     if (chosen === primary) {
       return {
-        label: "Correct",
-        detail: displayAction(primary) + " is preferred here.",
+        label: "Good default",
+        detail: "You chose the baseline action for these assumptions.",
+        isPreferred: true,
+        isAcceptable: true,
         isPassing: true,
         severity: "correct"
       };
@@ -691,8 +1022,10 @@
 
     if (allowed.includes(chosen)) {
       return {
-        label: secondaryLabel(primary, chosen),
-        detail: displayAction(primary) + " is preferred, but " + displayAction(chosen) + " is reasonable under these assumptions.",
+        label: "Reasonable alternative",
+        detail: displayAction(chosen) + " can work, but remember " + displayAction(primary) + " as the default.",
+        isPreferred: false,
+        isAcceptable: true,
         isPassing: true,
         severity: "acceptable"
       };
@@ -701,7 +1034,9 @@
     if (chosen === ACTIONS.FOLD && primary !== ACTIONS.FOLD) {
       return {
         label: "Too tight",
-        detail: displayAction(primary) + " is preferred; folding gives up too much equity or blocker value.",
+        detail: "The selected range continues this hand; folding is outside the default.",
+        isPreferred: false,
+        isAcceptable: false,
         isPassing: false,
         severity: "bad"
       };
@@ -711,6 +1046,8 @@
       return {
         label: "Too loose",
         detail: "Fold is preferred; this continue is too thin for the selected spot.",
+        isPreferred: false,
+        isAcceptable: false,
         isPassing: false,
         severity: "bad"
       };
@@ -719,6 +1056,8 @@
     return {
       label: "Wrong",
       detail: displayAction(primary) + " is preferred.",
+      isPreferred: false,
+      isAcceptable: false,
       isPassing: false,
       severity: "bad"
     };
@@ -753,22 +1092,6 @@
       isPassing: true,
       severity: "correct"
     };
-  }
-
-  function secondaryLabel(primary, chosen) {
-    if (primary === ACTIONS.THREE_BET) {
-      return "Acceptable, but 3-bet preferred";
-    }
-    if (primary === ACTIONS.CALL) {
-      return chosen === ACTIONS.THREE_BET ? "Acceptable, but call preferred" : "Acceptable, but call preferred";
-    }
-    if (primary === ACTIONS.FOLD) {
-      return "Acceptable exploit, but fold preferred";
-    }
-    if (primary === ACTIONS.OPEN) {
-      return "Acceptable, but open preferred";
-    }
-    return "Acceptable";
   }
 
   function displayAction(action) {
@@ -819,15 +1142,46 @@
   function validatePureActionRanges() {
     const errors = [];
     const preset = RANGE_PRESETS[DEFAULT_PRESET_ID];
+    Object.entries(preset.rfi).forEach(([profile, positions]) => {
+      Object.entries(positions).forEach(([position, row]) => {
+        const open = parseRangeList(row.open);
+        const mixed = parseRangeList(row.mixed);
+        open.forEach((hand) => {
+          if (mixed.has(hand)) {
+            errors.push(profile + " " + position + " has " + hand + " in both pure open and mixed ranges");
+          }
+        });
+      });
+    });
+
     Object.entries(preset.vsOpen.spotTemplates).forEach(([key, templateId]) => {
       const template = preset.vsOpen.templates[templateId];
-      const pure = {
-        [ACTIONS.THREE_BET]: parseRangeList(template.threeBet),
-        [ACTIONS.CALL]: parseRangeList(template.call)
-      };
-      pure[ACTIONS.THREE_BET].forEach((hand) => {
-        if (pure[ACTIONS.CALL].has(hand)) {
-          errors.push(key + " has " + hand + " in both pure 3-bet and pure call ranges");
+      const groups = [
+        { label: "pure 3-bet", hands: parseRangeList(template.threeBet) },
+        { label: "pure call", hands: parseRangeList(template.call) },
+        ...template.mixed.map((rule, index) => ({
+          label: "mixed rule " + (index + 1),
+          hands: parseRangeList(rule.hands)
+        }))
+      ];
+
+      for (let first = 0; first < groups.length; first += 1) {
+        for (let second = first + 1; second < groups.length; second += 1) {
+          groups[first].hands.forEach((hand) => {
+            if (groups[second].hands.has(hand)) {
+              errors.push(key + " has " + hand + " in both " + groups[first].label + " and " + groups[second].label);
+            }
+          });
+        }
+      }
+    });
+
+    Object.entries(preset.vsOpen.fourBet).forEach(([style, row]) => {
+      const pure = parseRangeList(row.fourBet);
+      const mixed = parseRangeList(row.mixed);
+      pure.forEach((hand) => {
+        if (mixed.has(hand)) {
+          errors.push(style + " 4-bet has " + hand + " in both pure and mixed ranges");
         }
       });
     });
@@ -970,6 +1324,7 @@
     MODES,
     OPEN_SIZE_CLASSES,
     OPENER_PROFILES,
+    POSITION_LABELS,
     POSITION_ORDER,
     RANGE_PRESETS,
     RFI_POSITIONS,
@@ -985,6 +1340,7 @@
     gradeThreeBetDecision,
     normalizeHand,
     parseRangeList,
+    positionLabel,
     profileLabel,
     recommend,
     sizeLabel,
