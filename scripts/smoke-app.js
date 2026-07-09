@@ -17,6 +17,7 @@ class FakeElement {
     this.value = "";
     this._textContent = "";
     this._innerHTML = "";
+    this.scrollIntoViewCalls = [];
     this._classes = new Set(String(this.attributes.class || "").split(/\s+/).filter(Boolean));
     this.classList = {
       add: (...names) => names.forEach((name) => this._classes.add(name)),
@@ -87,6 +88,10 @@ class FakeElement {
 
   click() {
     (this.listeners.click || []).forEach((listener) => listener({ target: this }));
+  }
+
+  scrollIntoView(options) {
+    this.scrollIntoViewCalls.push(options || {});
   }
 
   setAttribute(name, value) {
@@ -176,7 +181,10 @@ assert(!elements.get("chartModal").classList.contains("hidden"), "Chart opens");
 assert(elements.get("chartModeSelect").options.length === 2, "Chart exposes only the two fully contextualized situations");
 assert(elements.get("chartMatrix").children.length === 169, "Chart renders all 169 hand classes");
 
+assert(elements.get("spotLine").scrollIntoViewCalls.length === 0, "Initial question does not force-scroll the page");
 elements.get("nextBtn").click();
 assert(elements.get("feedbackBox").classList.contains("hidden"), "Next hand clears prior feedback");
+assert(elements.get("spotLine").scrollIntoViewCalls.length === 1, "Next hand returns the learner to the question");
+assert(elements.get("spotLine").scrollIntoViewCalls[0].block === "start", "Next hand aligns the question at the viewport start");
 
 console.log("App interaction smoke test passed.");

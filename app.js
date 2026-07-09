@@ -108,7 +108,7 @@
     el.noActionBtn.addEventListener("click", () => submitAnswer(getButtonAction(el.noActionBtn)));
     el.whyBtn.addEventListener("click", toggleWhyLine);
     el.viewCurrentChartBtn.addEventListener("click", openCurrentChart);
-    el.nextBtn.addEventListener("click", nextQuestion);
+    el.nextBtn.addEventListener("click", advanceToNextQuestion);
 
     el.openSettingsBtn.addEventListener("click", openSettings);
     el.closeSettingsBtn.addEventListener("click", closeSettings);
@@ -367,6 +367,11 @@
     currentQuestion = generateQuestion();
     whyVisible = false;
     renderQuestion();
+  }
+
+  function advanceToNextQuestion() {
+    nextQuestion();
+    el.spotLine.scrollIntoView({ block: "start" });
   }
 
   function generateQuestion() {
