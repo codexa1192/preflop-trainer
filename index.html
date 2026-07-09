@@ -231,6 +231,12 @@ button {
   background: #ffe9e4;
 }
 
+.feedback-acceptable {
+  border: 1px solid #dbc47d;
+  color: #654f0f;
+  background: #fff7d8;
+}
+
 .why-btn {
   margin-top: 8px;
   width: 100%;
@@ -259,11 +265,39 @@ button {
   -webkit-tap-highlight-color: transparent;
 }
 
-.why-line {
-  margin: 8px 0 0;
+.coach-panel {
+  margin-top: 8px;
+  border: 1px solid #c9d9cf;
+  border-radius: 12px;
+  background: #f8fbf9;
+  overflow: hidden;
+}
+
+.coach-row {
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 12px;
+  border-top: 1px solid #dce7e0;
+}
+
+.coach-row:first-child {
+  border-top: 0;
+}
+
+.coach-label {
+  color: #3f6658;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.coach-copy {
+  margin: 0;
+  color: #294d40;
   font-size: 14px;
-  color: #35594d;
-  line-height: 1.3;
+  line-height: 1.4;
 }
 
 .hidden {
@@ -566,7 +600,6 @@ button {
 .dot-fold { background: #eef1ed; }
 .dot-call { background: #9bb8d8; }
 .dot-three-bet { background: #d98b64; }
-.dot-four-bet { background: #8a6fd1; }
 .dot-open { background: #71b889; }
 .dot-mixed { background: #d8c061; }
 
@@ -601,7 +634,6 @@ button {
 .chart-fold { background: #f1f3ef; color: #687a72; }
 .chart-call { background: #c9ddf1; }
 .chart-three-bet { background: #f2c0a5; }
-.chart-four-bet { background: #d8cdf6; }
 .chart-open { background: #b9e3c7; }
 .chart-mixed { background: #eee2a2; }
 
@@ -688,10 +720,10 @@ button {
 
     <section class="quiz-card">
       <p id="spotLine" class="spot-line">Preflop Decision</p>
-      <p id="assumptionLine" class="assumption-line">Live $1/$3 Default · 8-handed · 100-133bb · no ante</p>
+      <p id="assumptionLine" class="assumption-line">Live $1/$3 Default · 9-handed · 100-133bb · no ante</p>
       <p id="samplingLine" class="sampling-line hidden">Sampling: Plausible only</p>
       <p id="handLine" class="hand-line">AKo</p>
-      <p class="prompt">Choose action</p>
+      <p class="prompt">Choose the default action</p>
       <div id="actionsRow" class="actions">
         <button id="yesActionBtn" class="action-btn action-yes" type="button">OPEN</button>
         <button id="callActionBtn" class="action-btn action-call hidden" type="button">CALL</button>
@@ -701,8 +733,25 @@ button {
         <p id="resultLine" class="feedback-copy"></p>
         <p id="detailLine" class="feedback-detail"></p>
       </div>
-      <button id="whyBtn" class="why-btn hidden" type="button">Why?</button>
-      <p id="whyLine" class="why-line hidden"></p>
+      <button id="whyBtn" class="why-btn hidden" type="button">Show explanation</button>
+      <div id="whyLine" class="coach-panel hidden">
+        <div class="coach-row">
+          <span class="coach-label">Why this hand</span>
+          <p id="coachReasonLine" class="coach-copy"></p>
+        </div>
+        <div id="coachCorrectionRow" class="coach-row hidden">
+          <span class="coach-label">Your choice</span>
+          <p id="coachCorrectionLine" class="coach-copy"></p>
+        </div>
+        <div id="coachAdjustmentRow" class="coach-row">
+          <span class="coach-label">Change when</span>
+          <p id="coachAdjustmentLine" class="coach-copy"></p>
+        </div>
+        <div class="coach-row">
+          <span class="coach-label">Remember</span>
+          <p id="coachTakeawayLine" class="coach-copy"></p>
+        </div>
+      </div>
       <button id="viewCurrentChartBtn" class="chart-link-btn hidden" type="button">View current chart</button>
       <button id="nextBtn" class="next-btn hidden" type="button">Next Hand</button>
     </section>
@@ -715,26 +764,22 @@ button {
           <span id="attemptsValue" class="pill-value">0</span>
         </div>
         <div class="summary-pill">
-          <span class="pill-label">Correct</span>
+          <span class="pill-label">Within strategy</span>
           <span id="correctValue" class="pill-value">0</span>
         </div>
         <div class="summary-pill">
-          <span class="pill-label">Accuracy</span>
+          <span class="pill-label">Default accuracy</span>
           <span id="accuracyValue" class="pill-value">--</span>
         </div>
       </div>
 
       <div class="stat-group">
-        <h3>Accuracy by RFI Position</h3>
+        <h3>Default / strategy by First-in Position</h3>
         <ul id="rfiStatsList" class="stat-list"></ul>
       </div>
       <div class="stat-group">
-        <h3>Accuracy by vs Open Spot</h3>
+        <h3>Default / strategy by Facing-open Spot</h3>
         <ul id="vsOpenStatsList" class="stat-list"></ul>
-      </div>
-      <div class="stat-group">
-        <h3>Accuracy by Facing 3-Bet</h3>
-        <ul id="fourBetStatsList" class="stat-list"></ul>
       </div>
       <div class="stat-group">
         <h3>Top 10 Missed Hands</h3>
@@ -749,10 +794,11 @@ button {
         <h2 id="settingsTitle">Settings</h2>
         <button id="closeSettingsBtn" class="ghost-btn" type="button">Done</button>
       </div>
-      <p class="modal-copy">Pick the live $1/$3 assumptions and spots for the decision drill.</p>
+      <p class="modal-copy">Pick the live $1/$3 assumptions and spots for the decision drill. These are training defaults, not universal answers.</p>
 
       <div class="setting-block">
-        <h3>Opener profile</h3>
+        <h3>Range profile</h3>
+        <p class="setting-note">Sets Hero's opening style when first in and Villain's opening style when facing an open.</p>
         <div id="profileGrid" class="radio-stack"></div>
       </div>
 
@@ -762,7 +808,7 @@ button {
       </div>
 
       <div class="setting-block">
-        <h3>RFI positions</h3>
+        <h3>First-in positions</h3>
         <div id="rfiToggleGrid" class="toggle-grid"></div>
       </div>
 
@@ -824,7 +870,6 @@ button {
         <span class="legend-pill"><span class="legend-dot dot-call"></span>Call</span>
         <span class="legend-pill"><span class="legend-dot dot-open"></span>Open</span>
         <span class="legend-pill"><span class="legend-dot dot-three-bet"></span>3-bet</span>
-        <span class="legend-pill"><span class="legend-dot dot-four-bet"></span>4-bet</span>
         <span class="legend-pill"><span class="legend-dot dot-mixed"></span>Mixed</span>
       </div>
 
@@ -833,8 +878,8 @@ button {
     </div>
   </div>
 
-<script src="./range-engine.js?v=20260703-optimal-study"></script>
-<script src="./trainer-scheduler.js?v=20260703-optimal-study"></script>
-<script src="./app.js?v=20260703-optimal-study"></script>
+<script src="./range-engine.js?v=20260709-challenge-coach"></script>
+<script src="./trainer-scheduler.js?v=20260709-challenge-coach"></script>
+<script src="./app.js?v=20260709-challenge-coach"></script>
 </body>
 </html>

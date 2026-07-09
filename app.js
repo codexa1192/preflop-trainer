@@ -12,7 +12,7 @@
 
   const STORAGE_KEYS = {
     settings: "poto_preflop_trainer_settings_v2",
-    stats: "poto_preflop_trainer_stats_v2"
+    stats: "poto_preflop_trainer_stats_v3"
   };
 
   const SAMPLING = {
@@ -21,18 +21,16 @@
   };
 
   const SAMPLING_LABELS = {
-    [SAMPLING.UNIFORM]: "Adaptive full deck (169)",
-    [SAMPLING.BORDERLINE]: "Optimized weak spots"
+    [SAMPLING.UNIFORM]: "Full deck review (169)",
+    [SAMPLING.BORDERLINE]: "Challenge mode (range edges)"
   };
   const AUTOPILOT_VALUE_HANDS = new Set(["AA", "KK"]);
 
   const DECISION_MIX = [
-    { id: MODES.RFI, label: "First in", weight: 0.3 },
-    { id: MODES.VS_OPEN, label: "Facing open", weight: 0.6 },
-    { id: MODES.FOUR_BET, label: "Facing 3-bet", weight: 0.1 }
+    { id: MODES.RFI, label: "First in", weight: 0.35 },
+    { id: MODES.VS_OPEN, label: "Facing open", weight: 0.65 }
   ];
   const LIVE_OPEN_SIZE_CLASSES = engine.OPEN_SIZE_CLASSES.filter((item) => item.id !== "SMALL");
-  const FOUR_BET_CONTEXT_KEY = MODES.FOUR_BET + ":default";
 
   let storageAvailable = true;
   let settings = loadSettings();
@@ -68,6 +66,12 @@
     detailLine: document.getElementById("detailLine"),
     whyBtn: document.getElementById("whyBtn"),
     whyLine: document.getElementById("whyLine"),
+    coachReasonLine: document.getElementById("coachReasonLine"),
+    coachCorrectionLine: document.getElementById("coachCorrectionLine"),
+    coachCorrectionRow: document.getElementById("coachCorrectionRow"),
+    coachAdjustmentLine: document.getElementById("coachAdjustmentLine"),
+    coachAdjustmentRow: document.getElementById("coachAdjustmentRow"),
+    coachTakeawayLine: document.getElementById("coachTakeawayLine"),
     viewCurrentChartBtn: document.getElementById("viewCurrentChartBtn"),
     nextBtn: document.getElementById("nextBtn"),
     attemptsValue: document.getElementById("attemptsValue"),
@@ -75,7 +79,6 @@
     accuracyValue: document.getElementById("accuracyValue"),
     rfiStatsList: document.getElementById("rfiStatsList"),
     vsOpenStatsList: document.getElementById("vsOpenStatsList"),
-    fourBetStatsList: document.getElementById("fourBetStatsList"),
     missList: document.getElementById("missList"),
     chartModal: document.getElementById("chartModal"),
     closeChartBtn: document.getElementById("closeChartBtn"),
@@ -177,8 +180,6 @@
 
     if (currentQuestion.mode === MODES.RFI) {
       rebuildHeroOptions(MODES.RFI, currentQuestion.position);
-    } else if (currentQuestion.mode === MODES.FOUR_BET) {
-      rebuildHeroOptions(MODES.FOUR_BET);
     } else {
       el.chartOpenerSelect.value = currentQuestion.openerPosition;
       rebuildHeroOptions(MODES.VS_OPEN, currentQuestion.heroPosition);
@@ -211,7 +212,7 @@
       values: engine.RFI_POSITIONS,
       selected: settings.enabledRfiPositions,
       settingKey: "enabledRfiPositions",
-      itemLabel: (value) => value
+      itemLabel: engine.positionLabel
     });
 
     buildToggleGroup({
@@ -219,17 +220,18 @@
       values: engine.VS_OPEN_OPENERS,
       selected: settings.enabledOpeners,
       settingKey: "enabledOpeners",
-      itemLabel: (value) => value + " opens"
+      itemLabel: (value) => engine.positionLabel(value) + " opens"
     });
 
     buildSamplingGrid(el.drillSamplingGrid, "drillSamplingMode", settings.drillSamplingMode);
-    el.decisionMixNote.innerHTML = '<p class="setting-note">Optimized study skips automatic AA/KK prompts, keeps weak spots in rotation, and still covers first-in, facing-open, and facing-3-bet decisions.</p>';
+    el.decisionMixNote.innerHTML = '<p class="setting-note">Challenge mode spends 95% of new questions on mixed decisions and true range edges, then adapts to the exact spots you miss. Facing-3-bet decisions are withheld until position, sizing, and call ranges are modeled.</p>';
   }
 
   function resetToLiveDefaults() {
     settings = defaultSettings();
     saveSettings();
     buildSettingsUI();
+    renderStats();
     nextQuestion();
     showNotice("Live $1/$3 defaults restored.");
   }
@@ -240,6 +242,7 @@
     }
     settings[key] = value;
     saveSettings();
+    renderStats();
     nextQuestion();
   }
 
@@ -343,6 +346,7 @@
 
         settings[settingKey] = values.filter((item) => nextValues.includes(item));
         saveSettings();
+        renderStats();
         nextQuestion();
       });
 
@@ -389,27 +393,7 @@
         handClass,
         recommendation,
         questionKey: buildQuestionKey(handArgs, handClass),
-        statsContextKey: MODES.RFI + ":" + position,
-        answered: false
-      };
-    }
-
-    if (mode === MODES.FOUR_BET) {
-      const handArgs = {
-        mode,
-        samplingMode: settings.drillSamplingMode
-      };
-      const handClass = sampleHand(handArgs);
-      const recommendation = engine.recommend({
-        mode,
-        hand: handClass
-      });
-      return {
-        mode,
-        handClass,
-        recommendation,
-        questionKey: buildQuestionKey(handArgs, handClass),
-        statsContextKey: FOUR_BET_CONTEXT_KEY,
+        statsContextKey: statsContextKeyForArgs(handArgs),
         answered: false
       };
     }
@@ -438,7 +422,7 @@
       handClass,
       recommendation,
       questionKey: buildQuestionKey(handArgs, handClass),
-      statsContextKey: MODES.VS_OPEN + ":" + spot.key,
+      statsContextKey: statsContextKeyForArgs(handArgs),
       answered: false
     };
   }
@@ -462,7 +446,7 @@
     const options = settings.enabledRfiPositions.map((position) => ({
       id: position,
       value: position,
-      contextKey: MODES.RFI + ":" + position
+      contextKey: statsContextKeyForArgs({ mode: MODES.RFI, position })
     }));
     return drawAdaptiveContext(options).value;
   }
@@ -473,7 +457,11 @@
       const options = valid.map((spot) => ({
         id: spot.key,
         value: spot,
-        contextKey: MODES.VS_OPEN + ":" + spot.key
+        contextKey: statsContextKeyForArgs({
+          mode: MODES.VS_OPEN,
+          openerPosition: spot.openerPosition,
+          heroPosition: spot.heroPosition
+        })
       }));
       return drawAdaptiveContext(options).value;
     }
@@ -488,42 +476,15 @@
       return drawEven("hands:uniform:" + args.mode, engine.ALL_HAND_CLASSES, "all");
     }
 
-    const groups = buildSamplingGroups(args);
-    const category = drawSamplingCategory(args, groups);
-    const picked = groups.find((group) => group.id === category) || groups[0];
+    const options = buildChallengeOptions(args);
     if (isAdaptiveDrill()) {
-      return drawAdaptiveHand(args, picked.values);
+      return drawAdaptiveChallengeHand(args, options);
     }
-    return drawEven("hands:" + samplingKey(args) + ":" + picked.id, picked.values, picked.values.join("|"));
-  }
-
-  function drawSamplingCategory(args, groups) {
-    const signature = groups.map((group) => group.id + ":" + group.values.length + ":" + group.weight).join("|");
-    if (!isAdaptiveDrill()) {
-      return drawWeighted("mix:" + samplingKey(args), groups, signature);
-    }
-    const options = groups.map((group) => ({
-      id: group.id,
-      weight: group.weight * adaptiveGroupMultiplier(args, group)
-    }));
-    return drawWeightedOption(options).id;
-  }
-
-  function adaptiveGroupMultiplier(args, group) {
-    const scores = group.values.map((hand) => {
-      const questionKey = buildQuestionKey(args, hand);
-      return scheduler.scoreHandOption({
-        record: stats.byQuestion[questionKey],
-        handMisses: stats.misses[hand],
-        sequence: stats.sequence
-      });
-    }).sort((a, b) => b - a);
-    const topCount = Math.min(6, scores.length);
-    if (!topCount) {
-      return 1;
-    }
-    const topAverage = scores.slice(0, topCount).reduce((sum, score) => sum + score, 0) / topCount;
-    return Math.min(2.6, Math.max(0.65, topAverage));
+    return drawWeightedOption(options.map((option) => ({
+      id: option.hand,
+      value: option.hand,
+      weight: option.weight
+    }))).value;
   }
 
   function drawAdaptiveContext(options) {
@@ -547,7 +508,6 @@
         questionKey,
         weight: scheduler.scoreHandOption({
           record: stats.byQuestion[questionKey],
-          handMisses: stats.misses[hand],
           sequence: stats.sequence,
           isRecentQuestion: recentQuestions.has(questionKey),
           isRecentHand: recentHands.has(hand)
@@ -555,7 +515,30 @@
       };
     });
     const fresh = options.filter((option) => !recentQuestions.has(option.questionKey));
-    return drawWeightedOption(fresh.length ? fresh : options).value;
+    const candidates = fresh.length ? fresh : options;
+    return drawWeightedOption(scheduler.capWeightedOptions(candidates, 0.18)).value;
+  }
+
+  function drawAdaptiveChallengeHand(args, challengeOptions) {
+    const recentQuestions = new Set(stats.recentQuestions || []);
+    const recentHands = new Set(stats.recentHands || []);
+    const options = challengeOptions.map((option) => {
+      const questionKey = buildQuestionKey(args, option.hand);
+      return {
+        id: option.hand,
+        value: option.hand,
+        questionKey,
+        weight: option.weight * scheduler.scoreHandOption({
+          record: stats.byQuestion[questionKey],
+          sequence: stats.sequence,
+          isRecentQuestion: recentQuestions.has(questionKey),
+          isRecentHand: recentHands.has(option.hand)
+        })
+      };
+    });
+    const fresh = options.filter((option) => !recentQuestions.has(option.questionKey));
+    const candidates = fresh.length ? fresh : options;
+    return drawWeightedOption(scheduler.capWeightedOptions(candidates, 0.18)).value;
   }
 
   function drawWeightedOption(options) {
@@ -578,12 +561,15 @@
 
   function modeStatsBucket(mode) {
     if (mode === MODES.RFI) {
-      return aggregateContextBuckets(settings.enabledRfiPositions.map((position) => MODES.RFI + ":" + position));
+      return aggregateContextBuckets(settings.enabledRfiPositions.map((position) =>
+        statsContextKeyForArgs({ mode: MODES.RFI, position })
+      ));
     }
-    if (mode === MODES.FOUR_BET) {
-      return stats.byContext[FOUR_BET_CONTEXT_KEY] || { total: 0, correct: 0 };
-    }
-    return aggregateContextBuckets(enabledVsOpenSpots().map((spot) => MODES.VS_OPEN + ":" + spot.key));
+    return aggregateContextBuckets(enabledVsOpenSpots().map((spot) => statsContextKeyForArgs({
+      mode: MODES.VS_OPEN,
+      openerPosition: spot.openerPosition,
+      heroPosition: spot.heroPosition
+    })));
   }
 
   function aggregateContextBuckets(keys) {
@@ -592,9 +578,12 @@
       if (row && Number.isFinite(row.total) && Number.isFinite(row.correct)) {
         bucket.total += Math.max(0, Math.floor(row.total));
         bucket.correct += Math.max(0, Math.floor(row.correct));
+        bucket.preferred += Number.isFinite(row.preferred)
+          ? Math.max(0, Math.floor(row.preferred))
+          : 0;
       }
       return bucket;
-    }, { total: 0, correct: 0 });
+    }, { total: 0, correct: 0, preferred: 0 });
   }
 
   function enabledVsOpenSpots() {
@@ -603,7 +592,7 @@
 
   function buildQuestionKey(args, hand) {
     const contextKey = contextKeyForArgs(args);
-    const profile = args.mode === MODES.FOUR_BET ? "DEFAULT" : settings.openerProfile;
+    const profile = settings.openerProfile;
     const size = args.mode === MODES.VS_OPEN ? settings.openSize : "NA";
     return [contextKey, hand, profile, size].join(":");
   }
@@ -612,17 +601,22 @@
     if (args.mode === MODES.RFI) {
       return MODES.RFI + ":" + args.position;
     }
-    if (args.mode === MODES.FOUR_BET) {
-      return FOUR_BET_CONTEXT_KEY;
-    }
     return MODES.VS_OPEN + ":" + engine.spotKey(args.openerPosition, args.heroPosition);
+  }
+
+  function statsContextKeyForArgs(args) {
+    const base = contextKeyForArgs(args);
+    if (args.mode === MODES.RFI) {
+      return base + ":" + settings.openerProfile;
+    }
+    return base + ":" + settings.openerProfile + ":" + settings.openSize;
   }
 
   function isAdaptiveDrill() {
     return true;
   }
 
-  function buildSamplingGroups(args) {
+  function buildChallengeOptions(args) {
     const rows = engine.ALL_HAND_CLASSES.map((hand) => ({
       hand,
       recommendation: engine.recommend({
@@ -634,62 +628,28 @@
         openerProfile: settings.openerProfile,
         openSize: settings.openSize
       })
-    })).filter((row) => !isAutopilotValueRow(row));
-    const mixedRows = rows.filter(isMixedDecisionRow);
-    const pureRows = rows.filter((row) => !isMixedDecisionRow(row));
-
-    if (args.mode === MODES.RFI) {
-      return nonEmptyGroups([
-        { id: "MIXED", weight: 0.5, values: mixedRows.map((row) => row.hand) },
-        { id: "OPEN", weight: 0.3, values: pureRows.filter((row) => row.recommendation.primaryAction === ACTIONS.OPEN).map((row) => row.hand) },
-        { id: "REST", weight: 0.2, values: pureRows.filter((row) => row.recommendation.primaryAction === ACTIONS.FOLD).map((row) => row.hand) }
-      ]);
-    }
-
-    if (args.mode === MODES.FOUR_BET) {
-      return nonEmptyGroups([
-        { id: "MIXED", weight: 0.7, values: mixedRows.map((row) => row.hand) },
-        { id: "REST", weight: 0.3, values: pureRows.filter((row) => row.recommendation.primaryAction === ACTIONS.FOLD).map((row) => row.hand) }
-      ]);
-    }
-
-    return nonEmptyGroups([
-      { id: "MIXED", weight: 0.45, values: mixedRows.map((row) => row.hand) },
-      { id: "RAISE", weight: 0.2, values: pureRows.filter((row) => row.recommendation.primaryAction === ACTIONS.THREE_BET).map((row) => row.hand) },
-      { id: "CALL", weight: 0.25, values: pureRows.filter((row) => row.recommendation.primaryAction === ACTIONS.CALL).map((row) => row.hand) },
-      { id: "REST", weight: 0.1, values: pureRows.filter((row) => row.recommendation.primaryAction === ACTIONS.FOLD).map((row) => row.hand) }
-    ]);
-  }
-
-  function isAutopilotValueRow(row) {
-    return AUTOPILOT_VALUE_HANDS.has(row.hand) &&
-      row.recommendation.allowedActions.length === 1 &&
-      row.recommendation.primaryAction !== ACTIONS.FOLD;
-  }
-
-  function isMixedDecisionRow(row) {
-    return row.recommendation.allowedActions.length > 1 || Boolean(row.recommendation.frequency);
-  }
-
-  function nonEmptyGroups(groups) {
-    return groups.filter((group) => group.values.length > 0);
-  }
-
-  function samplingKey(args) {
-    return [args.mode, args.position || "", args.openerPosition || "", args.heroPosition || "", settings.openerProfile, settings.openSize].join(":");
+    }));
+    const actionWeights = args.mode === MODES.RFI
+      ? { [ACTIONS.OPEN]: 0.55, [ACTIONS.FOLD]: 0.45 }
+      : { [ACTIONS.THREE_BET]: 0.3, [ACTIONS.CALL]: 0.35, [ACTIONS.FOLD]: 0.35 };
+    return scheduler.buildChallengeOptions(rows, {
+      actionWeights,
+      coreShare: 0.05,
+      excludeHands: Array.from(AUTOPILOT_VALUE_HANDS),
+      maxSharePerHand: 0.08
+    });
   }
 
   function renderQuestion() {
     const question = currentQuestion;
     if (question.mode === MODES.RFI) {
-      el.spotLine.textContent = "First in - Hero " + question.position;
-    } else if (question.mode === MODES.FOUR_BET) {
-      el.spotLine.textContent = "Facing 3-bet - Hero opened, villain 3-bets";
+      el.spotLine.textContent = "First in - Hero " + engine.positionLabel(question.position);
     } else {
-      el.spotLine.textContent = "Facing open - " + question.openerPosition + " opens, Hero " + question.heroPosition;
+      el.spotLine.textContent = "Facing open - " + engine.positionLabel(question.openerPosition) + " opens, Hero " + engine.positionLabel(question.heroPosition);
     }
 
     el.assumptionLine.textContent = engine.getAssumptionLabel({
+      mode: question.mode,
       openerProfile: settings.openerProfile,
       openSize: settings.openSize
     });
@@ -705,10 +665,15 @@
     el.feedbackBox.className = "feedback hidden";
     el.resultLine.textContent = "";
     el.detailLine.textContent = "";
-    el.whyBtn.textContent = "Why?";
+    el.whyBtn.textContent = "Show explanation";
     el.whyBtn.classList.add("hidden");
-    el.whyLine.textContent = "";
     el.whyLine.classList.add("hidden");
+    el.coachReasonLine.textContent = "";
+    el.coachCorrectionLine.textContent = "";
+    el.coachCorrectionRow.classList.add("hidden");
+    el.coachAdjustmentLine.textContent = "";
+    el.coachAdjustmentRow.classList.add("hidden");
+    el.coachTakeawayLine.textContent = "";
     el.viewCurrentChartBtn.classList.add("hidden");
     el.nextBtn.classList.add("hidden");
   }
@@ -726,13 +691,20 @@
     if (grade.isPassing) {
       stats.correct += 1;
     }
+    if (grade.isPreferred) {
+      stats.preferred += 1;
+    }
 
     if (!stats.byContext[currentQuestion.statsContextKey]) {
-      stats.byContext[currentQuestion.statsContextKey] = { total: 0, correct: 0 };
+      stats.byContext[currentQuestion.statsContextKey] = { total: 0, correct: 0, preferred: 0 };
     }
     stats.byContext[currentQuestion.statsContextKey].total += 1;
     if (grade.isPassing) {
       stats.byContext[currentQuestion.statsContextKey].correct += 1;
+    }
+    if (grade.isPreferred) {
+      stats.byContext[currentQuestion.statsContextKey].preferred =
+        (stats.byContext[currentQuestion.statsContextKey].preferred || 0) + 1;
     }
 
     if (!grade.isPassing) {
@@ -744,7 +716,8 @@
       questionKey: currentQuestion.questionKey,
       contextKey: currentQuestion.statsContextKey,
       hand: currentQuestion.handClass,
-      isPassing: grade.isPassing
+      isPassing: grade.isPassing,
+      isPreferred: grade.isPreferred
     });
 
     saveStats();
@@ -754,18 +727,39 @@
       button.disabled = true;
     });
 
-    el.feedbackBox.className = "feedback " + (grade.isPassing ? "feedback-ok" : "feedback-bad");
+    const feedbackClass = grade.isPreferred
+      ? "feedback-ok"
+      : (grade.isAcceptable ? "feedback-acceptable" : "feedback-bad");
+    el.feedbackBox.className = "feedback " + feedbackClass;
     el.resultLine.textContent = grade.label;
     el.detailLine.textContent =
-      currentQuestion.handClass + " prefers " + engine.displayAction(recommendation.primaryAction) +
-      " in " + recommendation.contextLabel + ". " + grade.detail;
+      "You chose " + engine.displayAction(takeAction) +
+      " · Default " + engine.displayAction(recommendation.primaryAction) + ". " + grade.detail;
 
+    renderCoach(recommendation, takeAction);
     el.whyBtn.classList.remove("hidden");
+    el.whyBtn.textContent = "Hide explanation";
     el.viewCurrentChartBtn.classList.remove("hidden");
-    el.whyLine.classList.add("hidden");
-    el.whyLine.textContent = "";
-    whyVisible = false;
+    el.whyLine.classList.remove("hidden");
+    whyVisible = true;
     el.nextBtn.classList.remove("hidden");
+  }
+
+  function renderCoach(recommendation, chosenAction) {
+    const coach = recommendation.coach || {
+      reason: recommendation.explanation,
+      adjustment: recommendation.frequency,
+      takeaway: "Use the default as the baseline, then adjust only when the table gives you a reason."
+    };
+    el.coachReasonLine.textContent = coach.reason || recommendation.explanation;
+    const correction = chosenAction !== recommendation.primaryAction && coach.actionNotes
+      ? coach.actionNotes[chosenAction]
+      : "";
+    el.coachCorrectionLine.textContent = correction || "";
+    el.coachCorrectionRow.classList.toggle("hidden", !correction);
+    el.coachAdjustmentLine.textContent = coach.adjustment || "";
+    el.coachAdjustmentRow.classList.toggle("hidden", !coach.adjustment);
+    el.coachTakeawayLine.textContent = coach.takeaway || "";
   }
 
   function toggleWhyLine() {
@@ -775,22 +769,13 @@
 
     whyVisible = !whyVisible;
     if (!whyVisible) {
-      el.whyBtn.textContent = "Why?";
+      el.whyBtn.textContent = "Show explanation";
       el.whyLine.classList.add("hidden");
       return;
     }
 
-    el.whyBtn.textContent = "Hide Why";
-    el.whyLine.textContent = buildWhyText(currentQuestion.recommendation);
+    el.whyBtn.textContent = "Hide explanation";
     el.whyLine.classList.remove("hidden");
-  }
-
-  function buildWhyText(recommendation) {
-    const allowed = recommendation.allowedActions.map(engine.displayAction).join("/");
-    return recommendation.explanation +
-      " Preferred: " + engine.displayAction(recommendation.primaryAction) +
-      ". Allowed: " + allowed +
-      (recommendation.frequency ? ". Mix: " + recommendation.frequency : "") + ".";
   }
 
   function setActionLabelsForMode(mode) {
@@ -810,11 +795,6 @@
       return;
     }
 
-    if (mode === MODES.FOUR_BET) {
-      setActionButton(el.yesActionBtn, ACTIONS.FOUR_BET, true);
-      setActionButton(el.noActionBtn, ACTIONS.FOLD, true);
-      setActionButton(el.callActionBtn, "", false);
-    }
   }
 
   function setActionButton(button, action, visible) {
@@ -833,8 +813,7 @@
   function buildChartControls() {
     setSelectOptions(el.chartModeSelect, [
       { id: MODES.RFI, label: "First in" },
-      { id: MODES.VS_OPEN, label: "Facing open" },
-      { id: MODES.FOUR_BET, label: "Facing 3-bet" }
+      { id: MODES.VS_OPEN, label: "Facing open" }
     ]);
     setSelectOptions(el.chartProfileSelect, engine.OPENER_PROFILES);
     setSelectOptions(el.chartSizeSelect, LIVE_OPEN_SIZE_CLASSES);
@@ -847,7 +826,7 @@
     el.chartProfileSelect.value = settings.openerProfile;
     el.chartSizeSelect.value = settings.openSize;
     if (!el.chartOpenerSelect.value) {
-      setSelectOptions(el.chartOpenerSelect, engine.VS_OPEN_OPENERS.map((id) => ({ id, label: id })));
+      setSelectOptions(el.chartOpenerSelect, engine.VS_OPEN_OPENERS.map((id) => ({ id, label: engine.positionLabel(id) })));
     }
     rebuildHeroOptions(el.chartModeSelect.value);
   }
@@ -862,12 +841,6 @@
       el.chartProfileSelect.disabled = false;
       el.chartSizeSelect.disabled = true;
       rebuildHeroOptions(mode, el.chartHeroSelect.value || "UTG");
-    } else if (mode === MODES.FOUR_BET) {
-      el.chartOpenerSelect.disabled = true;
-      el.chartHeroSelect.disabled = true;
-      el.chartProfileSelect.disabled = true;
-      el.chartSizeSelect.disabled = true;
-      rebuildHeroOptions(mode);
     } else {
       el.chartOpenerSelect.disabled = false;
       el.chartHeroSelect.disabled = false;
@@ -931,13 +904,6 @@
       });
     }
 
-    if (mode === MODES.FOUR_BET) {
-      return engine.getChartCellRecommendation({
-        mode: MODES.FOUR_BET,
-        hand
-      });
-    }
-
     return engine.getChartCellRecommendation({
       mode: MODES.VS_OPEN,
       openerPosition: el.chartOpenerSelect.value || "MP3",
@@ -949,7 +915,11 @@
   }
 
   function showChartDetail(recommendation) {
-    const allowed = recommendation.allowedActions.map(engine.displayAction).join(", ");
+    const alternatives = recommendation.allowedActions
+      .filter((action) => action !== recommendation.primaryAction)
+      .map(engine.displayAction)
+      .join(", ");
+    const coach = recommendation.coach || {};
     el.chartDetail.innerHTML = "";
 
     const title = document.createElement("strong");
@@ -958,57 +928,64 @@
       (recommendation.actionTag ? " · " + recommendation.actionTag : "");
 
     const meta = document.createElement("span");
-    meta.textContent = recommendation.contextLabel + " · Allowed: " + allowed;
+    meta.textContent = recommendation.contextLabel + " · Default: " + engine.displayAction(recommendation.primaryAction) +
+      (alternatives ? " · Reasonable alternative: " + alternatives : "");
 
     const why = document.createElement("p");
-    why.textContent = recommendation.explanation + (recommendation.frequency ? " " + recommendation.frequency : "");
+    why.textContent = coach.reason || recommendation.explanation;
+
+    const adjustment = document.createElement("p");
+    adjustment.textContent = coach.adjustment ? "Change when: " + coach.adjustment : "";
+
+    const takeaway = document.createElement("p");
+    takeaway.textContent = coach.takeaway ? "Remember: " + coach.takeaway : "";
 
     el.chartDetail.append(title, meta, why);
+    if (adjustment.textContent) {
+      el.chartDetail.appendChild(adjustment);
+    }
+    if (takeaway.textContent) {
+      el.chartDetail.appendChild(takeaway);
+    }
   }
 
   function updateChartControlVisibility(mode) {
     el.chartOpenerControl.classList.toggle("hidden", mode !== MODES.VS_OPEN);
-    el.chartHeroControl.classList.toggle("hidden", mode === MODES.FOUR_BET);
-    el.chartProfileControl.classList.toggle("hidden", mode === MODES.FOUR_BET);
+    el.chartHeroControl.classList.remove("hidden");
+    el.chartProfileControl.classList.remove("hidden");
     el.chartSizeControl.classList.toggle("hidden", mode !== MODES.VS_OPEN);
   }
 
   function renderChartAssumption(mode, profile, size) {
     if (mode === MODES.RFI) {
-      el.chartAssumptionLine.textContent = "Live $1/$3 Default · 8-handed · 100-133bb · no ante · " + engine.profileLabel(profile) + " profile · Hero " + (el.chartHeroSelect.value || "UTG");
-      return;
-    }
-
-    if (mode === MODES.FOUR_BET) {
-      el.chartAssumptionLine.textContent = "Live $1/$3 Default · 8-handed · 100-133bb · no ante · Hero opened and faces a 3-bet · default 4-bet range";
+      el.chartAssumptionLine.textContent = engine.getAssumptionLabel({
+        mode: MODES.RFI,
+        openerProfile: profile
+      }) + " · Hero " + engine.positionLabel(el.chartHeroSelect.value || "UTG");
       return;
     }
 
     el.chartAssumptionLine.textContent = engine.getAssumptionLabel({
+      mode: MODES.VS_OPEN,
       openerProfile: profile,
       openSize: size
-    }) + " · " + (el.chartOpenerSelect.value || "MP3") + " opens, Hero " + (el.chartHeroSelect.value || "BTN");
+    }) + " · " + engine.positionLabel(el.chartOpenerSelect.value || "MP3") + " opens, Hero " + engine.positionLabel(el.chartHeroSelect.value || "BTN");
   }
 
   function rebuildHeroOptions(mode, preferredValue) {
     if (mode === MODES.RFI) {
-      setSelectOptions(el.chartHeroSelect, engine.RFI_POSITIONS.map((id) => ({ id, label: id })));
+      setSelectOptions(el.chartHeroSelect, engine.RFI_POSITIONS.map((id) => ({ id, label: engine.positionLabel(id) })));
       el.chartHeroSelect.disabled = false;
       el.chartHeroSelect.value = engine.RFI_POSITIONS.includes(preferredValue) ? preferredValue : "UTG";
       return;
     }
 
-    if (mode === MODES.FOUR_BET) {
-      setSelectOptions(el.chartHeroSelect, [{ id: "default", label: "Default" }]);
-      return;
-    }
-
     if (!el.chartOpenerSelect.options.length) {
-      setSelectOptions(el.chartOpenerSelect, engine.VS_OPEN_OPENERS.map((id) => ({ id, label: id })));
+      setSelectOptions(el.chartOpenerSelect, engine.VS_OPEN_OPENERS.map((id) => ({ id, label: engine.positionLabel(id) })));
     }
     const opener = el.chartOpenerSelect.value || "MP3";
     const heroes = engine.getValidHeroPositions(opener);
-    setSelectOptions(el.chartHeroSelect, heroes.map((id) => ({ id, label: id })));
+    setSelectOptions(el.chartHeroSelect, heroes.map((id) => ({ id, label: engine.positionLabel(id) })));
     el.chartHeroSelect.value = heroes.includes(preferredValue) ? preferredValue : (heroes.includes("BTN") ? "BTN" : heroes[0]);
   }
 
@@ -1029,17 +1006,26 @@
   function renderStats() {
     el.attemptsValue.textContent = String(stats.total);
     el.correctValue.textContent = String(stats.correct);
-    el.accuracyValue.textContent = formatPercent(stats.correct, stats.total);
-    renderContextStatList(el.rfiStatsList, engine.RFI_POSITIONS.map((position) => ({ key: MODES.RFI + ":" + position, label: position })));
-    renderContextStatList(el.vsOpenStatsList, engine.getValidVsOpenSpots().map((spot) => ({ key: MODES.VS_OPEN + ":" + spot.key, label: spot.key.replace(">", " -> ") })));
-    renderContextStatList(el.fourBetStatsList, [{ key: FOUR_BET_CONTEXT_KEY, label: "Default live 4-bet" }]);
+    el.accuracyValue.textContent = formatPercent(stats.preferred, stats.total);
+    renderContextStatList(el.rfiStatsList, engine.RFI_POSITIONS.map((position) => ({
+      key: statsContextKeyForArgs({ mode: MODES.RFI, position }),
+      label: engine.positionLabel(position)
+    })));
+    renderContextStatList(el.vsOpenStatsList, engine.getValidVsOpenSpots().map((spot) => ({
+      key: statsContextKeyForArgs({
+        mode: MODES.VS_OPEN,
+        openerPosition: spot.openerPosition,
+        heroPosition: spot.heroPosition
+      }),
+      label: engine.positionLabel(spot.openerPosition) + " -> " + engine.positionLabel(spot.heroPosition)
+    })));
     renderMissList();
   }
 
   function renderContextStatList(listEl, contexts) {
     listEl.textContent = "";
     contexts.forEach((context) => {
-      const bucket = stats.byContext[context.key] || { total: 0, correct: 0 };
+      const bucket = stats.byContext[context.key] || { total: 0, correct: 0, preferred: 0 };
       const li = document.createElement("li");
       li.className = "stat-row";
 
@@ -1047,7 +1033,8 @@
       left.textContent = context.label;
 
       const right = document.createElement("span");
-      right.textContent = bucket.correct + "/" + bucket.total + " (" + formatPercent(bucket.correct, bucket.total) + ")";
+      right.textContent = formatPercent(bucket.preferred, bucket.total) + " default · " +
+        formatPercent(bucket.correct, bucket.total) + " within strategy";
 
       li.append(left, right);
       listEl.appendChild(li);
@@ -1170,16 +1157,24 @@
 
   function defaultStats() {
     const byContext = {};
-    engine.RFI_POSITIONS.forEach((position) => {
-      byContext[MODES.RFI + ":" + position] = { total: 0, correct: 0 };
+    engine.OPENER_PROFILES.forEach(({ id: profile }) => {
+      engine.RFI_POSITIONS.forEach((position) => {
+        byContext[MODES.RFI + ":" + position + ":" + profile] = { total: 0, correct: 0, preferred: 0 };
+      });
+      LIVE_OPEN_SIZE_CLASSES.forEach(({ id: size }) => {
+        engine.getValidVsOpenSpots().forEach((spot) => {
+          byContext[MODES.VS_OPEN + ":" + spot.key + ":" + profile + ":" + size] = {
+            total: 0,
+            correct: 0,
+            preferred: 0
+          };
+        });
+      });
     });
-    engine.getValidVsOpenSpots().forEach((spot) => {
-      byContext[MODES.VS_OPEN + ":" + spot.key] = { total: 0, correct: 0 };
-    });
-    byContext[FOUR_BET_CONTEXT_KEY] = { total: 0, correct: 0 };
     return scheduler.ensureAdaptiveStats({
       total: 0,
       correct: 0,
+      preferred: 0,
       byContext,
       misses: {},
       sequence: 0,
@@ -1201,23 +1196,27 @@
       if (Number.isFinite(parsed.correct) && parsed.correct >= 0) {
         fallback.correct = Math.floor(parsed.correct);
       }
+      if (Number.isFinite(parsed.preferred) && parsed.preferred >= 0) {
+        fallback.preferred = Math.floor(parsed.preferred);
+      }
       if (parsed.byContext && typeof parsed.byContext === "object") {
         Object.keys(fallback.byContext).forEach((key) => {
           const rows = [parsed.byContext[key]];
-          if (key.startsWith(MODES.VS_OPEN + ":")) {
-            rows.push(parsed.byContext[MODES.THREE_BET + key.slice(MODES.VS_OPEN.length)]);
-          }
           const merged = rows.reduce((bucket, row) => {
             if (row && Number.isFinite(row.total) && Number.isFinite(row.correct)) {
               bucket.total += Math.max(0, Math.floor(row.total));
               bucket.correct += Math.max(0, Math.floor(row.correct));
+              bucket.preferred += Number.isFinite(row.preferred)
+                ? Math.max(0, Math.floor(row.preferred))
+                : 0;
             }
             return bucket;
-          }, { total: 0, correct: 0 });
+          }, { total: 0, correct: 0, preferred: 0 });
           if (merged.total > 0) {
             fallback.byContext[key] = {
               total: merged.total,
-              correct: Math.min(merged.correct, merged.total)
+              correct: Math.min(merged.correct, merged.total),
+              preferred: Math.min(merged.preferred, merged.correct, merged.total)
             };
           }
         });
@@ -1235,6 +1234,7 @@
       if (fallback.correct > fallback.total) {
         fallback.correct = fallback.total;
       }
+      fallback.preferred = Math.min(fallback.preferred, fallback.correct);
       fallback.sequence = Math.max(fallback.sequence, fallback.total);
       return fallback;
     } catch (err) {
