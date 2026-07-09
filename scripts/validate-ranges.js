@@ -820,9 +820,9 @@ assert(
 );
 
 assert(
-  indexHtml.includes("./range-engine.js?v=20260709-challenge-coach") &&
-    indexHtml.includes("./trainer-scheduler.js?v=20260709-challenge-coach") &&
-    indexHtml.includes("./app.js?v=20260709-challenge-coach") &&
+  indexHtml.includes("./range-engine.js?v=20260709-next-hand-scroll") &&
+    indexHtml.includes("./trainer-scheduler.js?v=20260709-next-hand-scroll") &&
+    indexHtml.includes("./app.js?v=20260709-next-hand-scroll") &&
     !indexHtml.includes('<script src="./app.js"></script>') &&
     !indexHtml.includes('<script src="./range-engine.js"></script>') &&
     !indexHtml.includes('<script src="./trainer-scheduler.js"></script>'),
