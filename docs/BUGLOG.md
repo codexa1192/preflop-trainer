@@ -9,3 +9,5 @@
 **Fix:** Route the button through a dedicated advance handler that renders the next question and scrolls its context line into view.
 
 **Test:** The app interaction smoke test now verifies that initial load does not force-scroll and a user-triggered next hand scrolls exactly once to the question start.
+
+**Deployment:** Bump the static-script cache key so returning browsers load the corrected handler immediately after GitHub Pages publishes it.
