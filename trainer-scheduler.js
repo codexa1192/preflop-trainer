@@ -379,7 +379,7 @@
       return "UNKNOWN";
     }
     const allowed = Array.isArray(recommendation.allowedActions) ? recommendation.allowedActions : [];
-    if (allowed.length > 1 || Boolean(recommendation.frequency)) {
+    if (allowed.length > 1) {
       return "MIXED";
     }
     return typeof recommendation.primaryAction === "string" && recommendation.primaryAction

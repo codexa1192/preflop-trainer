@@ -81,13 +81,14 @@
     };
   }
 
-  function mix(hands, primaryAction, allowedActions, frequency, explanation) {
+  function mix(hands, primaryAction, allowedActions, frequency, explanation, defaultFoldWhen) {
     return {
       hands,
       primaryAction,
       allowedActions,
       frequency,
-      explanation
+      explanation,
+      defaultFoldWhen: defaultFoldWhen || { profiles: [], sizes: [] }
     };
   }
 
@@ -134,8 +135,8 @@
             "QQ+, AK",
             "TT, JJ, AQs, KQs",
             [
-              mix("99, AJs", ACTIONS.CALL, [ACTIONS.CALL, ACTIONS.FOLD], "Call at good tables; fold when the opener is very tight.", "Continue carefully. You have position, but early ranges dominate many one-pair hands."),
-              mix("AQo", ACTIONS.FOLD, [ACTIONS.FOLD, ACTIONS.THREE_BET], "Mostly fold; occasional blocker 3-bet.", "AQo blocks premiums but performs poorly when called by an early-position range.")
+              mix("99, AJs", ACTIONS.CALL, [ACTIONS.CALL, ACTIONS.FOLD], "Call at good tables; fold when the opener is very tight.", "Continue carefully. You have position, but early ranges dominate many one-pair hands.", { profiles: ["TIGHT"], sizes: [] }),
+              mix("AQo", ACTIONS.FOLD, [ACTIONS.FOLD, ACTIONS.THREE_BET], "Mostly fold; occasional blocker 3-bet.", "AQo blocks premiums but performs poorly when called by an early-position range.", { profiles: ["TIGHT"], sizes: ["LARGE"] })
             ],
             "Tightest in-position continue range versus an early opener."
           ),
@@ -143,7 +144,7 @@
             "QQ+, AK",
             "77, 88, 99, TT, JJ, AQs, KQs, QJs, JTs",
             [
-              mix("AQo", ACTIONS.FOLD, [ACTIONS.FOLD, ACTIONS.THREE_BET], "Mostly fold; low-frequency 3-bet only with fold equity.", "AQo has blocker value, but flatting dominated offsuit broadways versus early position is a common live leak."),
+              mix("AQo", ACTIONS.FOLD, [ACTIONS.FOLD, ACTIONS.THREE_BET], "Mostly fold; low-frequency 3-bet only with fold equity.", "AQo has blocker value, but flatting dominated offsuit broadways versus early position is a common live leak.", { profiles: ["TIGHT"], sizes: ["LARGE"] }),
               mix("AJs, ATs", ACTIONS.CALL, [ACTIONS.CALL, ACTIONS.THREE_BET], "Call most; 3-bet selectively.", "Suited aces realize equity better than offsuit broadways and can continue in position.")
             ],
             "In-position but still dominated by early opens."
@@ -160,7 +161,7 @@
             "QQ+, AK",
             "22, 33, 44, 55, 66, 77, 88, 99, TT, JJ, AQs, AJs, ATs, KQs, KJs, QJs, JTs, T9s, 98s",
             [
-              mix("AQo, KQo", ACTIONS.FOLD, [ACTIONS.FOLD, ACTIONS.CALL], "Fold by default versus large or tight opens; defend only against smaller opens.", "Big blind gets a price, but offsuit broadways are still dominated by early value.")
+              mix("AQo, KQo", ACTIONS.FOLD, [ACTIONS.FOLD, ACTIONS.CALL], "Fold by default versus large or tight opens; defend only against smaller opens.", "Big blind gets a price, but offsuit broadways are still dominated by early value.", { profiles: ["TIGHT"], sizes: ["LARGE"] })
             ],
             "Big blind can defend suited and pair-heavy hands, but avoids dominated offsuit calls."
           ),
@@ -168,7 +169,7 @@
             "JJ+, AK, AQs",
             "66, 77, 88, 99, TT, AJs, ATs, KQs, KJs, QJs, JTs, T9s, 98s, AQo",
             [
-              mix("AJo, KQo", ACTIONS.FOLD, [ACTIONS.FOLD, ACTIONS.CALL], "Fold without a clear table edge; call in softer, smaller-open games.", "These offsuit hands look strong but run into domination when middle-position opens continue."),
+              mix("AJo, KQo", ACTIONS.FOLD, [ACTIONS.FOLD, ACTIONS.CALL], "Fold without a clear table edge; call in softer, smaller-open games.", "These offsuit hands look strong but run into domination when middle-position opens continue.", { profiles: ["TIGHT"], sizes: ["LARGE"] }),
               mix("A5s, A4s", ACTIONS.THREE_BET, [ACTIONS.THREE_BET, ACTIONS.FOLD], "3-bet as blocker bluffs when opener folds enough.", "Suited wheel aces block strong continues and retain equity when called.")
             ],
             "Middle-position in-position continue range."
@@ -177,7 +178,7 @@
             "JJ+, AK, AQs, A5s, A4s",
             "55, 66, 77, 88, 99, TT, AJs, ATs, KQs, KJs, QJs, JTs, T9s, 98s, 87s, AQo",
             [
-              mix("AJo, KQo", ACTIONS.CALL, [ACTIONS.CALL, ACTIONS.FOLD], "Call against normal opens; fold versus tight/large opens.", "Button position helps realize equity, but these hands are still dominated often enough to avoid autopilot calls."),
+              mix("AJo, KQo", ACTIONS.CALL, [ACTIONS.CALL, ACTIONS.FOLD], "Call against normal opens; fold versus tight/large opens.", "Button position helps realize equity, but these hands are still dominated often enough to avoid autopilot calls.", { profiles: ["TIGHT"], sizes: ["LARGE"] }),
               mix("KTs, QTs", ACTIONS.CALL, [ACTIONS.CALL, ACTIONS.THREE_BET], "Mostly call; mix 3-bets versus over-folding openers.", "Suited broadways play better in position and can apply blocker pressure.")
             ],
             "Button can continue wider against middle-position opens."
@@ -194,7 +195,7 @@
             "JJ+, AK, AQs",
             "22, 33, 44, 55, 66, 77, 88, 99, TT, AJs, ATs, A9s, KQs, KJs, KTs, QJs, QTs, JTs, T9s, 98s, 87s, AQo",
             [
-              mix("AJo, KQo, QJo", ACTIONS.CALL, [ACTIONS.CALL, ACTIONS.FOLD], "Defend at normal sizes; fold more versus larger opens.", "Big blind price helps, but dominated offsuit hands lose value as size increases.")
+              mix("AJo, KQo, QJo", ACTIONS.CALL, [ACTIONS.CALL, ACTIONS.FOLD], "Defend at normal sizes; fold more versus larger opens.", "Big blind price helps, but dominated offsuit hands lose value as size increases.", { profiles: [], sizes: ["LARGE"] })
             ],
             "Big blind defends more because of price, but still respects size."
           ),
@@ -208,9 +209,9 @@
           ),
           CO_SB: spec(
             "99+, AK, AQo, AQs, AJs, KQs, A5s, A4s, KJs",
-            "66, 77, 88, ATs, KTs, QJs, JTs, T9s",
+            "66, 77, 88, ATs, KTs, JTs, T9s",
             [
-              mix("AJo, KQo, QTs", ACTIONS.THREE_BET, [ACTIONS.THREE_BET, ACTIONS.FOLD], "Prefer 3-bet or fold from small blind.", "Out of position and rake make flats worse than taking initiative.")
+              mix("QJs, QTs, AJo, KQo", ACTIONS.THREE_BET, [ACTIONS.THREE_BET, ACTIONS.FOLD], "Prefer 3-bet or fold from small blind; fold more versus tight or large opens.", "Out of position and rake make flats worse than taking initiative.", { profiles: ["TIGHT"], sizes: ["LARGE"] })
             ],
             "Small blind versus cutoff is aggressive and position-aware."
           ),
@@ -218,15 +219,15 @@
             "TT+, AK, AQs, AQo, A4s",
             "22, 33, 44, 55, 66, 77, 88, 99, AJs, ATs, A9s, A8s, KQs, KJs, KTs, K9s, QJs, QTs, Q9s, JTs, J9s, T9s, T8s, 98s, 87s, 76s, AJo, KQo, KJo, QJo",
             [
-              mix("A7s, A5s, Q8s, J8s, T7s", ACTIONS.CALL, [ACTIONS.CALL, ACTIONS.FOLD], "Defend versus standard sizes; fold versus larger/tighter opens.", "Big blind price allows more suited continues, but weak kickers are still marginal.")
+              mix("A7s, A5s, Q8s, J8s, T7s", ACTIONS.CALL, [ACTIONS.CALL, ACTIONS.FOLD], "Defend versus standard sizes; fold versus larger/tighter opens.", "Big blind price allows more suited continues, but weak kickers are still marginal.", { profiles: ["TIGHT"], sizes: ["LARGE"] })
             ],
             "Big blind defends wide versus cutoff, especially suited hands."
           ),
           BTN_SB: spec(
             "88+, ATs+, KQs, AQo+, A5s, A4s, KJs",
-            "66, 77, A9s, KTs, QTs, JTs, T9s",
+            "66, 77, A9s, KTs, JTs, T9s",
             [
-              mix("AJo, KQo, K9s, Q9s, J9s", ACTIONS.THREE_BET, [ACTIONS.THREE_BET, ACTIONS.FOLD], "3-bet or fold from small blind.", "Small blind has no postflop position and should pressure button opens rather than over-flat.")
+              mix("QJs, QTs, AJo, KQo, K9s, Q9s, J9s", ACTIONS.THREE_BET, [ACTIONS.THREE_BET, ACTIONS.FOLD], "3-bet or fold from small blind; fold more versus tight or large opens.", "Small blind has no postflop position and should pressure button opens rather than over-flat.", { profiles: ["TIGHT"], sizes: ["LARGE"] })
             ],
             "Small blind responds aggressively to button opens."
           ),
@@ -234,14 +235,14 @@
             "99+, AK, AQs, AQo, AJs, A5s, A4s, KQs",
             "22, 33, 44, 55, 66, 77, 88, ATs, A9s, A8s, A7s, A6s, KJs, KTs, K9s, K8s, K7s, QJs, QTs, Q9s, Q8s, JTs, J9s, J8s, T9s, T8s, 98s, 97s, 87s, 86s, 76s, 65s, AJo, ATo, KQo, KJo, QJo, JTo",
             [
-              mix("KTo, QTo, T7s, 75s, 54s", ACTIONS.CALL, [ACTIONS.CALL, ACTIONS.FOLD], "Defend versus normal button opens; fold versus big/tight sizing.", "Big blind gets the best price but should still avoid defending every dominated offsuit hand.")
+              mix("KTo, QTo, T7s, 75s, 54s", ACTIONS.CALL, [ACTIONS.CALL, ACTIONS.FOLD], "Defend versus normal button opens; fold versus big/tight sizing.", "Big blind gets the best price but should still avoid defending every dominated offsuit hand.", { profiles: ["TIGHT"], sizes: ["LARGE"] })
             ],
             "Big blind defends widest versus button."
           )
         },
         spotTemplates: {
           "UTG>UTG1": "EARLY_NEXT",
-          "UTG>MP1": "EARLY_IP",
+          "UTG>MP1": "EARLY_NEXT",
           "UTG>MP2": "EARLY_IP",
           "UTG>MP3": "EARLY_IP",
           "UTG>CO": "EARLY_IP",
@@ -411,7 +412,7 @@
 
   function buildRfiCoach(args, recommendation, traits) {
     const position = positionLabel(args.position);
-    const isMixed = recommendation.allowedActions.length > 1 || Boolean(recommendation.frequency);
+    const isMixed = recommendation.allowedActions.length > 1;
     let reason;
     if (isMixed) {
       reason = traits.hand + " sits on the " + position + " opening edge: " + describeHandStrength(traits) +
@@ -456,7 +457,7 @@
     const opener = positionLabel(args.openerPosition);
     const hero = positionLabel(args.heroPosition);
     const isBlind = args.heroPosition === "SB" || args.heroPosition === "BB";
-    const isMixed = recommendation.allowedActions.length > 1 || Boolean(recommendation.frequency);
+    const isMixed = recommendation.allowedActions.length > 1;
     const boundaryLead = isMixed ? "This is a boundary decision. " : "";
     let reason;
 
@@ -476,6 +477,12 @@
       } else {
         reason = boundaryLead + traits.hand + " has enough raw high-card strength to continue here, but its offsuit shape makes position and domination important.";
       }
+    } else if (args.heroPosition === "SB" && traits.isSuited && traits.isBroadway) {
+      const shape = traits.gap === 0
+        ? "a strong, connected suited hand"
+        : (traits.gap === 1 ? "a strong suited one-gapper" : "a playable suited broadway");
+      reason = boundaryLead + traits.hand + " is " + shape +
+        ", but from the small blind it realizes equity poorly out of position, live rake punishes a thin flat, it can be dominated by stronger broadways, and the big blind can squeeze or come along.";
     } else {
       reason = boundaryLead + traits.hand + " folds because " + describeHandLimitation(traits) +
         (isBlind ? "; the blind discount does not erase the postflop position problem" : " against the " + opener + " range") + ".";
@@ -494,8 +501,16 @@
       adjustment = "A 4.5-6bb open makes thin calls less attractive; keep the bottom of the continue range tight.";
     } else if (!adjustment && args.openerProfile === "TIGHT") {
       adjustment = "Against a tight opener, remove thin calls and speculative 3-bets first.";
+    } else if (!adjustment && args.openerProfile === "LOOSE" &&
+        recommendation.primaryAction === ACTIONS.FOLD && args.heroPosition === "SB" &&
+        traits.isSuited && traits.isBroadway) {
+      adjustment = "The loose range helps, but this hand still lacks enough blocker or value strength for a small-blind 3-bet; do not turn it into a rake-sensitive call.";
     } else if (!adjustment && args.openerProfile === "LOOSE") {
       adjustment = "Against a loose opener, widen selectively with position, suitedness, and blockers rather than any two cards.";
+    } else if (!adjustment && recommendation.primaryAction === ACTIONS.FOLD &&
+        args.heroPosition === "SB" && traits.isSuited && traits.isBroadway) {
+      const price = args.openSize === "SMALL" ? "At 2-3bb" : "At 3-4bb";
+      adjustment = price + ", a genuinely wider opener adds a 3-bet mix; calling remains the least attractive option.";
     } else if (!adjustment) {
       adjustment = "A larger open or tighter opener pushes the weakest continue toward fold; a looser opener moves it the other way.";
     }
@@ -529,7 +544,7 @@
       reason: cleanSentence(reason),
       adjustment: cleanSentence(plainAdjustment(adjustment)),
       takeaway: cleanSentence(takeaway),
-      actionNotes: buildVsOpenActionNotes(recommendation, traits)
+      actionNotes: buildVsOpenActionNotes(recommendation, traits, args)
     };
   }
 
@@ -558,7 +573,7 @@
     };
   }
 
-  function buildVsOpenActionNotes(recommendation, traits) {
+  function buildVsOpenActionNotes(recommendation, traits, args) {
     const notes = {};
     const allowed = new Set(recommendation.allowedActions);
     notes[ACTIONS.FOLD] = recommendation.primaryAction === ACTIONS.FOLD
@@ -573,6 +588,8 @@
       notes[ACTIONS.CALL] = "Calling can work if the opener proves wider or the price is smaller; under the selected assumptions it is not the baseline.";
     } else if (recommendation.primaryAction === ACTIONS.THREE_BET) {
       notes[ACTIONS.CALL] = "Calling gives up the initiative with a hand this range prefers to raise.";
+    } else if (args.heroPosition === "SB" && traits.isSuited && traits.isBroadway) {
+      notes[ACTIONS.CALL] = "Calling is the least attractive option: it plays every street out of position, lets the big blind squeeze or come along, pays live rake, and can make dominated top pairs.";
     } else {
       notes[ACTIONS.CALL] = "Calling is too thin here because " + describeHandLimitation(traits) + ".";
     }
@@ -626,7 +643,9 @@
       return "it has two strong cards, suitedness, and good postflop playability";
     }
     if (traits.isSuited && traits.gap <= 1) {
-      return "its suited, connected shape can make straights, flushes, and strong draws";
+      return traits.gap === 0
+        ? "its suited, connected shape can make straights, flushes, and strong draws"
+        : "its suited one-gap shape can make straights, flushes, and strong draws";
     }
     if (traits.isBroadway) {
       return "its high-card strength is useful even though it is offsuit";
@@ -647,11 +666,26 @@
     if (traits.isBroadway && traits.isOffsuit) {
       return "it is offsuit and often dominated by stronger broadways";
     }
+    if (traits.isSuitedAce) {
+      return "its ace blocker and suitedness are not enough without a profitable raise or call";
+    }
+    if (traits.isSuited && traits.isBroadway && traits.gap <= 1) {
+      return "it has real rank and connection, but domination and poor realization make continuing too thin in this spot";
+    }
+    if (traits.isSuited && traits.isBroadway) {
+      return "it is a playable suited broadway, but domination and poor realization make continuing too thin in this spot";
+    }
+    if (traits.isSuited && traits.gap <= 1) {
+      return "its suited connection has playability, but not enough rank or realization for this continue";
+    }
     if (traits.isSuited) {
-      return "suitedness alone does not make up for weak rank or poor connection";
+      return "suitedness alone does not make up for weak rank and limited connection";
     }
     if (traits.highRank === "A") {
       return "the weak kicker and offsuit shape create domination problems";
+    }
+    if (traits.isOffsuit && traits.gap <= 1) {
+      return "its connection is real, but the offsuit shape and limited high-card strength make continuing too thin";
     }
     return "it lacks suitedness, high-card strength, and useful connection";
   }
@@ -659,6 +693,12 @@
   function describeRfiLimitation(traits) {
     if (traits.isPair) {
       return "this pocket pair is below the selected first-in threshold from this position";
+    }
+    if (traits.isSuited && traits.isBroadway) {
+      return "this playable suited broadway is below the selected first-in threshold from this position";
+    }
+    if (traits.isSuited && traits.gap <= 1) {
+      return "its suited connection does not clear the selected first-in threshold from this position";
     }
     return describeHandLimitation(traits);
   }
@@ -859,6 +899,7 @@
           allowedActions: rule.allowedActions,
           frequency: rule.frequency,
           explanation: rule.explanation + " " + TEXT.size,
+          defaultFoldWhen: rule.defaultFoldWhen,
           contextLabel: positionLabel(openerPosition) + " opens, Hero " + positionLabel(heroPosition),
           rangeLabel: buildTemplateRangeLabel(template)
         });
@@ -912,20 +953,18 @@
     const isInPosition = POSITION_ORDER.indexOf(heroPosition) < POSITION_ORDER.indexOf("SB");
     const isEarlyOpen = openerPosition === "UTG" || openerPosition === "UTG1";
     const isLateOpen = openerPosition === "CO" || openerPosition === "BTN";
-    const frequencyText = String(rec.frequency || "").toLowerCase();
-    const selectedConditionFavorsFold = rec.primaryAction !== ACTIONS.FOLD &&
-      rec.allowedActions.includes(ACTIONS.FOLD) &&
-      ((profile === "TIGHT" && frequencyText.includes("tight")) ||
-        (size === "LARGE" && /large|larger|big sizing/.test(frequencyText)));
+    const defaultFoldWhen = rec.defaultFoldWhen || { profiles: [], sizes: [] };
+    const selectedConditionFavorsFold = rec.allowedActions.includes(ACTIONS.FOLD) &&
+      rec.allowedActions.some((action) => action !== ACTIONS.FOLD) &&
+      ((defaultFoldWhen.profiles || []).includes(profile) ||
+        (defaultFoldWhen.sizes || []).includes(size));
 
     if (selectedConditionFavorsFold) {
       return makeRecommendation({
         ...rec,
         primaryAction: ACTIONS.FOLD,
-        allowedActions: [ACTIONS.FOLD, rec.primaryAction],
-        frequency: profile === "TIGHT"
-          ? "Fold by default under the selected tight profile; continue only if the opener proves wider."
-          : "Fold by default against the selected large size; continue only with a strong table-specific reason.",
+        allowedActions: [ACTIONS.FOLD],
+        frequency: "",
         explanation: "The selected opener profile or size moves this boundary hand to a fold."
       });
     }
@@ -951,17 +990,25 @@
     }
 
     if (size === "SMALL" && rec.primaryAction === ACTIONS.FOLD && isInPosition && !isEarlyOpen && parseRangeList("AJo, KQo, KJo, QJo, ATo, KTs, QTs, JTs, T9s, 98s, 87s, 66, 55").has(hand)) {
+      const smallOpenAction = profile === "TIGHT" ? ACTIONS.FOLD : ACTIONS.CALL;
       return makeRecommendation({
         ...rec,
-        primaryAction: ACTIONS.CALL,
-        allowedActions: [ACTIONS.CALL, ACTIONS.FOLD],
-        frequency: "Call versus small opens when the table is not 3-bet heavy.",
-        explanation: "Small sizing improves price and realization in position. This is a close call, not an automatic continue."
+        primaryAction: smallOpenAction,
+        allowedActions: smallOpenAction === ACTIONS.FOLD
+          ? [ACTIONS.FOLD]
+          : [ACTIONS.CALL, ACTIONS.FOLD],
+        frequency: profile === "TIGHT" ? "" : "Call versus small opens when the table is not 3-bet heavy.",
+        explanation: profile === "TIGHT"
+          ? "The small price helps, but the selected tight opener keeps this as a default fold."
+          : "Small sizing improves price and realization in position. This is a close call, not an automatic continue."
       });
     }
 
-    if (profile === "LOOSE" && size !== "LARGE" && rec.primaryAction === ACTIONS.FOLD && !isEarlyOpen && parseRangeList("AQo, AJo, KQo, KJo, QJo, ATo, KTs, QTs, JTs, T9s, 98s, A5s, A4s, 66, 55").has(hand)) {
-      const action = isLateOpen ? ACTIONS.THREE_BET : ACTIONS.CALL;
+    if (profile === "LOOSE" && size !== "LARGE" && rec.primaryAction === ACTIONS.FOLD && !isEarlyOpen && parseRangeList("AQo, AJo, KQo, KJo, QJo, ATo, KTs, QJs, QTs, JTs, T9s, 98s, A5s, A4s, 66, 55").has(hand)) {
+      if (heroPosition === "SB" && hand !== "QJs") {
+        return rec;
+      }
+      const action = heroPosition === "SB" || isLateOpen ? ACTIONS.THREE_BET : ACTIONS.CALL;
       return makeRecommendation({
         ...rec,
         primaryAction: action,
@@ -983,6 +1030,7 @@
       allowedActions: allowed,
       frequency: input.frequency || "",
       explanation: input.explanation || "",
+      defaultFoldWhen: input.defaultFoldWhen || { profiles: [], sizes: [] },
       actionTag: input.actionTag || "",
       contextLabel: input.contextLabel || "",
       rangeLabel: input.rangeLabel || ""
@@ -1102,7 +1150,7 @@
     if (!recommendation || !recommendation.primaryAction) {
       return "fold";
     }
-    if ((recommendation.allowedActions || []).length > 1 || recommendation.frequency) {
+    if ((recommendation.allowedActions || []).length > 1) {
       return "mixed";
     }
     if (recommendation.primaryAction === ACTIONS.OPEN) {
@@ -1128,7 +1176,7 @@
     };
     ALL_HAND_CLASSES.forEach((hand) => {
       const rec = recommend({ ...args, hand });
-      if (rec.allowedActions.length > 1 || rec.frequency) {
+      if (rec.allowedActions.length > 1) {
         groups.mixed.push(hand);
       } else if (rec.primaryAction === ACTIONS.FOLD) {
         groups.other.push(hand);
@@ -1142,6 +1190,8 @@
   function validatePureActionRanges() {
     const errors = [];
     const preset = RANGE_PRESETS[DEFAULT_PRESET_ID];
+    const validProfiles = new Set(OPENER_PROFILES.map((profile) => profile.id));
+    const validSizes = new Set(OPEN_SIZE_CLASSES.map((size) => size.id));
     Object.entries(preset.rfi).forEach(([profile, positions]) => {
       Object.entries(positions).forEach(([position, row]) => {
         const open = parseRangeList(row.open);
@@ -1174,6 +1224,28 @@
           });
         }
       }
+    });
+
+    Object.entries(preset.vsOpen.templates).forEach(([templateId, template]) => {
+      template.mixed.forEach((rule, index) => {
+        const foldWhen = rule.defaultFoldWhen || {};
+        const profiles = Array.isArray(foldWhen.profiles) ? foldWhen.profiles : [];
+        const sizes = Array.isArray(foldWhen.sizes) ? foldWhen.sizes : [];
+        profiles.forEach((profile) => {
+          if (!validProfiles.has(profile)) {
+            errors.push(templateId + " mixed rule " + (index + 1) + " has unknown fold profile " + profile);
+          }
+        });
+        sizes.forEach((size) => {
+          if (!validSizes.has(size)) {
+            errors.push(templateId + " mixed rule " + (index + 1) + " has unknown fold size " + size);
+          }
+        });
+        if ((profiles.length || sizes.length) &&
+            (!rule.allowedActions.includes(ACTIONS.FOLD) || !rule.allowedActions.some((action) => action !== ACTIONS.FOLD))) {
+          errors.push(templateId + " mixed rule " + (index + 1) + " has unusable defaultFoldWhen metadata");
+        }
+      });
     });
 
     Object.entries(preset.vsOpen.fourBet).forEach(([style, row]) => {

@@ -39,6 +39,31 @@ function sameRecommendation(a, b) {
   );
 }
 
+function recommendationCopy(recommendation) {
+  const coach = recommendation.coach || {};
+  return [
+    recommendation.explanation,
+    coach.reason,
+    coach.adjustment,
+    coach.takeaway,
+    ...Object.values(coach.actionNotes || {})
+  ].filter(Boolean).join(" ");
+}
+
+function hasHandFamilyCoachError(hand, recommendation) {
+  if (hand.length === 2) {
+    return false;
+  }
+  const ranks = "AKQJT98765432";
+  const isBroadway = [hand[0], hand[1]].every((rank) => "AKQJT".includes(rank));
+  const gap = Math.max(0, Math.abs(ranks.indexOf(hand[0]) - ranks.indexOf(hand[1])) - 1);
+  const copy = recommendationCopy(recommendation);
+  if (isBroadway) {
+    return /weak rank|poor connection|suitedness alone/i.test(copy);
+  }
+  return gap <= 1 && /poor connection|suitedness alone|lacks[^.]{0,80}connection/i.test(copy);
+}
+
 const rootDir = path.join(__dirname, "..");
 const indexHtml = fs.readFileSync(path.join(rootDir, "index.html"), "utf8");
 const appJs = fs.readFileSync(path.join(rootDir, "app.js"), "utf8");
@@ -221,7 +246,7 @@ assert(
 const contradictions = engine.validatePureActionRanges();
 assert(
   contradictions.length === 0,
-  "No hand appears in overlapping pure or mixed range groups for the same spot"
+  "Range groups do not overlap and conditional-fold metadata is valid"
 );
 
 assert(
@@ -270,6 +295,23 @@ assert(
     sortedHands(reversedBoundaryPools.edge) === sortedHands(utgBoundaryPools.edge) &&
     sortedHands(reversedBoundaryPools.core) === sortedHands(utgBoundaryPools.core),
   "Decision-boundary classification is independent of input order"
+);
+
+const copyOnlyRecommendation = {
+  primaryAction: engine.ACTIONS.FOLD,
+  allowedActions: [engine.ACTIONS.FOLD],
+  frequency: "Copy-only adjustment"
+};
+const copyOnlyPools = scheduler.classifyDecisionBoundaryRows([
+  { hand: "AA", recommendation: copyOnlyRecommendation }
+]);
+assert(
+  engine.classifyForChart(copyOnlyRecommendation) === "fold" &&
+    copyOnlyPools.mixed.length === 0 &&
+    copyOnlyPools.core.length === 1 &&
+    !engineJs.includes("|| recommendation.frequency") &&
+    !schedulerJs.includes("Boolean(recommendation.frequency)"),
+  "Explanatory frequency copy cannot change chart or challenge classification"
 );
 
 assert(
@@ -410,6 +452,53 @@ const early77Call = rec({
   heroPosition: "BTN",
   hand: "77"
 });
+const qjsMpSbBalanced = rec({
+  openerPosition: "MP1",
+  heroPosition: "SB",
+  hand: "QJs"
+});
+const qjsHjSbLoose = rec({
+  openerPosition: "MP3",
+  heroPosition: "SB",
+  hand: "QJs",
+  openerProfile: "LOOSE"
+});
+const qjsHjSbLooseLarge = rec({
+  openerPosition: "MP3",
+  heroPosition: "SB",
+  hand: "QJs",
+  openerProfile: "LOOSE",
+  openSize: "LARGE"
+});
+const qtsUtgSb = rec({
+  openerPosition: "UTG",
+  heroPosition: "SB",
+  hand: "QTs"
+});
+const t9oBtnBb = rec({
+  openerPosition: "BTN",
+  heroPosition: "BB",
+  hand: "T9o"
+});
+const looseHjSb55 = rec({
+  openerPosition: "MP3",
+  heroPosition: "SB",
+  hand: "55",
+  openerProfile: "LOOSE"
+});
+const large98sMpCo = rec({
+  openerPosition: "MP1",
+  heroPosition: "CO",
+  hand: "98s",
+  openSize: "LARGE"
+});
+const tightLargeAqoMpCo = rec({
+  openerPosition: "MP1",
+  heroPosition: "CO",
+  hand: "AQo",
+  openerProfile: "TIGHT",
+  openSize: "LARGE"
+});
 assert(
   /lacks suitedness|poor connection/i.test(trashBlindFold.coach.reason) &&
     /out of position/i.test(trashBlindFold.coach.takeaway) &&
@@ -422,16 +511,66 @@ assert(
 );
 
 assert(
+  qjsMpSbBalanced.primaryAction === engine.ACTIONS.FOLD &&
+    qjsMpSbBalanced.allowedActions.length === 1 &&
+    /strong, connected suited hand/i.test(qjsMpSbBalanced.coach.reason) &&
+    /out of position/i.test(qjsMpSbBalanced.coach.reason) &&
+    /big blind/i.test(qjsMpSbBalanced.coach.reason) &&
+    /live rake/i.test(qjsMpSbBalanced.coach.reason) &&
+    /dominated/i.test(qjsMpSbBalanced.coach.reason) &&
+    /3-bet/i.test(qjsMpSbBalanced.coach.adjustment) &&
+    /calling remains the least attractive/i.test(qjsMpSbBalanced.coach.adjustment) &&
+    /least attractive/i.test(qjsMpSbBalanced.coach.actionNotes[engine.ACTIONS.CALL]) &&
+    /out of position/i.test(qjsMpSbBalanced.coach.actionNotes[engine.ACTIONS.CALL]) &&
+    /big blind/i.test(qjsMpSbBalanced.coach.actionNotes[engine.ACTIONS.CALL]) &&
+    !/weak rank|poor connection|suitedness alone/i.test(recommendationCopy(qjsMpSbBalanced)),
+  "QJs SB versus MP keeps a defensible fold without mislabeling the hand"
+);
+
+assert(
+  qjsHjSbLoose.primaryAction === engine.ACTIONS.THREE_BET &&
+    qjsHjSbLoose.allowedActions.includes(engine.ACTIONS.FOLD) &&
+    !qjsHjSbLoose.allowedActions.includes(engine.ACTIONS.CALL) &&
+    qjsHjSbLooseLarge.primaryAction === engine.ACTIONS.FOLD &&
+    !qjsHjSbLooseLarge.allowedActions.includes(engine.ACTIONS.CALL),
+  "QJs SB adds a 3-bet against loose standard HJ opens while large opens keep fold and never call"
+);
+
+assert(
+  /one-gapper/i.test(qtsUtgSb.coach.reason) &&
+    !/connected suited hand/i.test(qtsUtgSb.coach.reason) &&
+    /connection is real/i.test(t9oBtnBb.coach.reason) &&
+    !/lacks[^.]{0,80}connection/i.test(recommendationCopy(t9oBtnBb)),
+  "One-gappers and connected offsuit hands receive accurate shape descriptions"
+);
+
+assert(
+  looseHjSb55.primaryAction === engine.ACTIONS.FOLD &&
+    !looseHjSb55.allowedActions.includes(engine.ACTIONS.THREE_BET),
+  "Loose-opener QJs adjustment does not turn low pocket pairs into small-blind 3-bets"
+);
+
+assert(
   looseLargeAjo.primaryAction === engine.ACTIONS.FOLD &&
     tightEarly99.primaryAction === engine.ACTIONS.FOLD &&
+    large98sMpCo.primaryAction === engine.ACTIONS.FOLD &&
+    !tightEarly99.allowedActions.includes(engine.ACTIONS.CALL) &&
+    !large98sMpCo.allowedActions.includes(engine.ACTIONS.CALL) &&
+    tightLargeAqoMpCo.allowedActions.length === 1 &&
+    !tightLargeAqoMpCo.allowedActions.includes(engine.ACTIONS.THREE_BET) &&
+    !engine.gradeRecommendation(tightEarly99, engine.ACTIONS.CALL).isPassing &&
+    !engine.gradeRecommendation(large98sMpCo, engine.ACTIONS.CALL).isPassing &&
+    !engine.gradeRecommendation(tightLargeAqoMpCo, engine.ACTIONS.THREE_BET).isPassing &&
     /selected 4.5-6bb size|selected large size/i.test(looseLargeAjo.coach.adjustment) &&
     /selected tight profile/i.test(tightEarly99.coach.adjustment) &&
-    /can work/i.test(tightEarly99.coach.actionNotes[engine.ACTIONS.CALL]) &&
     !/offsuit hand/i.test(tightEarly99.coach.takeaway),
-  "Combined opener profile and size assumptions do not contradict the trained default"
+  "Tight and large assumptions keep conditional calls outside exact-context passing grades"
 );
 
 let coachFailures = 0;
+let semanticCoachFailures = 0;
+let frequencyShapeFailures = 0;
+let conditionalFoldFailures = 0;
 engine.OPENER_PROFILES.forEach(({ id: profile }) => {
   engine.RFI_POSITIONS.forEach((position) => {
     engine.ALL_HAND_CLASSES.forEach((hand) => {
@@ -448,9 +587,15 @@ engine.OPENER_PROFILES.forEach(({ id: profile }) => {
           secondaryNoteFailure || pairTakeawayFailure) {
         coachFailures += 1;
       }
+      if (hasHandFamilyCoachError(hand, recommendation)) {
+        semanticCoachFailures += 1;
+      }
+      if (recommendation.frequency && recommendation.allowedActions.length === 1) {
+        frequencyShapeFailures += 1;
+      }
     });
   });
-  ["STANDARD", "LARGE"].forEach((openSize) => {
+  engine.OPEN_SIZE_CLASSES.forEach(({ id: openSize }) => {
     engine.getValidVsOpenSpots().forEach((spot) => {
       engine.ALL_HAND_CLASSES.forEach((hand) => {
         const recommendation = engine.recommend({
@@ -478,6 +623,17 @@ engine.OPENER_PROFILES.forEach(({ id: profile }) => {
             selectedAssumptionContradiction || secondaryNoteFailure || pairTakeawayFailure) {
           coachFailures += 1;
         }
+        if (hasHandFamilyCoachError(hand, recommendation)) {
+          semanticCoachFailures += 1;
+        }
+        if (recommendation.frequency && recommendation.allowedActions.length === 1) {
+          frequencyShapeFailures += 1;
+        }
+        const foldWhen = recommendation.defaultFoldWhen || { profiles: [], sizes: [] };
+        if (((foldWhen.profiles || []).includes(profile) || (foldWhen.sizes || []).includes(openSize)) &&
+            recommendation.allowedActions.some((action) => action !== engine.ACTIONS.FOLD)) {
+          conditionalFoldFailures += 1;
+        }
       });
     });
   });
@@ -485,6 +641,63 @@ engine.OPENER_PROFILES.forEach(({ id: profile }) => {
 assert(
   coachFailures === 0,
   "Every active recommendation has a valid default and complete structured coaching"
+);
+assert(
+  semanticCoachFailures === 0,
+  "Broadways, connectors, and one-gappers never receive false hand-shape coaching"
+);
+assert(
+  frequencyShapeFailures === 0 && conditionalFoldFailures === 0,
+  "Copy stays separate from strategy and matched conditional folds grade strictly"
+);
+
+let continuationMonotonicityFailures = 0;
+let defaultMonotonicityFailures = 0;
+const openerPositionsByHero = new Map();
+engine.getValidVsOpenSpots().forEach(({ openerPosition, heroPosition }) => {
+  if (!openerPositionsByHero.has(heroPosition)) {
+    openerPositionsByHero.set(heroPosition, new Set());
+  }
+  openerPositionsByHero.get(heroPosition).add(openerPosition);
+});
+engine.OPENER_PROFILES.forEach(({ id: openerProfile }) => {
+  engine.OPEN_SIZE_CLASSES.forEach(({ id: openSize }) => {
+    openerPositionsByHero.forEach((openerSet, heroPosition) => {
+      const openers = [...openerSet].sort(
+        (a, b) => engine.POSITION_ORDER.indexOf(a) - engine.POSITION_ORDER.indexOf(b)
+      );
+      for (let index = 0; index < openers.length - 1; index += 1) {
+        engine.ALL_HAND_CLASSES.forEach((hand) => {
+          const earlier = rec({
+            openerPosition: openers[index],
+            heroPosition,
+            hand,
+            openerProfile,
+            openSize
+          });
+          const later = rec({
+            openerPosition: openers[index + 1],
+            heroPosition,
+            hand,
+            openerProfile,
+            openSize
+          });
+          const continuesEarlier = earlier.allowedActions.some((action) => action !== engine.ACTIONS.FOLD);
+          const continuesLater = later.allowedActions.some((action) => action !== engine.ACTIONS.FOLD);
+          if (continuesEarlier && !continuesLater) {
+            continuationMonotonicityFailures += 1;
+          }
+          if (earlier.primaryAction !== engine.ACTIONS.FOLD && later.primaryAction === engine.ACTIONS.FOLD) {
+            defaultMonotonicityFailures += 1;
+          }
+        });
+      }
+    });
+  });
+});
+assert(
+  continuationMonotonicityFailures === 0 && defaultMonotonicityFailures === 0,
+  "Facing-open ranges never tighten when the same hero faces a later opener"
 );
 
 const weakBucketWeight = scheduler.scoreBucket({ total: 10, correct: 4, preferred: 2 }, false);
@@ -820,9 +1033,9 @@ assert(
 );
 
 assert(
-  indexHtml.includes("./range-engine.js?v=20260709-next-hand-scroll") &&
-    indexHtml.includes("./trainer-scheduler.js?v=20260709-next-hand-scroll") &&
-    indexHtml.includes("./app.js?v=20260709-next-hand-scroll") &&
+  indexHtml.includes("./range-engine.js?v=20260710-suited-coach") &&
+    indexHtml.includes("./trainer-scheduler.js?v=20260710-suited-coach") &&
+    indexHtml.includes("./app.js?v=20260710-suited-coach") &&
     !indexHtml.includes('<script src="./app.js"></script>') &&
     !indexHtml.includes('<script src="./range-engine.js"></script>') &&
     !indexHtml.includes('<script src="./trainer-scheduler.js"></script>'),
