@@ -24,18 +24,28 @@ jobs:
           test -f trainer-scheduler.js
           test -f range-engine.js
           test -f scripts/validate-ranges.js
+          test -f scripts/strategy-integrity.js
+          test -f scripts/simulate-learning.js
           test -f scripts/smoke-app.js
           test -f README.md
           test -f SECURITY.md
+          test -f docs/AI_VISUAL_STANDARD.md
+          test -f docs/POTO_CALIBRATION.md
+          test -f docs/TRAINING_OBJECTIVE.md
+          test -f docs/STRATEGY_CHANGELOG.md
           test -f .github/dependabot.yml
           node --check app.js
           node --check trainer-scheduler.js
           node --check range-engine.js
           node --check scripts/validate-ranges.js
+          node --check scripts/strategy-integrity.js
+          node --check scripts/simulate-learning.js
           node --check scripts/smoke-app.js
+          node scripts/strategy-integrity.js
+          node scripts/simulate-learning.js
           node scripts/validate-ranges.js
           node scripts/smoke-app.js
-          if grep -RIlE '(BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]+|xox[baprs]-[A-Za-z0-9-]+)' -- index.html app.js trainer-scheduler.js range-engine.js scripts/validate-ranges.js scripts/smoke-app.js README.md SECURITY.md .github/dependabot.yml >/tmp/public-sensitive-pattern-files; then
+          if grep -RIlE '(BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]+|xox[baprs]-[A-Za-z0-9-]+)' -- index.html app.js trainer-scheduler.js range-engine.js scripts/validate-ranges.js scripts/strategy-integrity.js scripts/simulate-learning.js scripts/smoke-app.js README.md SECURITY.md docs/AI_VISUAL_STANDARD.md docs/POTO_CALIBRATION.md docs/TRAINING_OBJECTIVE.md docs/STRATEGY_CHANGELOG.md .github/dependabot.yml >/tmp/public-sensitive-pattern-files; then
             printf 'Potential sensitive pattern found in public tracked files; remove it before merge.\n' >&2
             exit 1
           fi

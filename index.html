@@ -29,6 +29,10 @@ body {
   padding: 0;
 }
 
+body.modal-open {
+  overflow: hidden;
+}
+
 body {
   min-height: 100svh;
   font-family: "Avenir Next", "Gill Sans", "Trebuchet MS", sans-serif;
@@ -40,6 +44,15 @@ button {
   font: inherit;
 }
 
+button:focus-visible,
+select:focus-visible,
+input:focus-visible,
+a:focus-visible,
+#questionPanel:focus-visible {
+  outline: 3px solid #1a67a3;
+  outline-offset: 2px;
+}
+
 .app {
   width: min(720px, 100%);
   margin: 0 auto;
@@ -47,13 +60,36 @@ button {
 }
 
 .topbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
   margin-bottom: 12px;
   position: relative;
   z-index: 2;
+}
+
+.strategy-status {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #d7bf7a;
+  border-radius: 12px;
+  color: #5e4a13;
+  background: #fff8d9;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.strategy-status strong {
+  font-size: 14px;
+}
+
+.strategy-status a {
+  color: inherit;
+  font-weight: 800;
 }
 
 .topbar h1 {
@@ -101,6 +137,36 @@ button {
   border-radius: 18px;
   padding: 16px;
   box-shadow: var(--shadow);
+}
+
+.session-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 7px;
+  color: #365c4e;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.session-progress-track {
+  width: 100%;
+  height: 7px;
+  margin-bottom: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #dfeae3;
+}
+
+.session-progress-fill {
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: #257854;
+  transition: width 160ms ease;
 }
 
 .spot-line {
@@ -300,6 +366,31 @@ button {
   line-height: 1.4;
 }
 
+.session-complete {
+  padding: 18px 4px 4px;
+  text-align: center;
+}
+
+.session-complete h2 {
+  margin: 0;
+  color: var(--felt-deep);
+  font-size: 28px;
+}
+
+.session-complete p {
+  margin: 8px auto 0;
+  max-width: 520px;
+  color: #456257;
+  line-height: 1.45;
+}
+
+.session-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 16px;
+}
+
 .hidden {
   display: none !important;
 }
@@ -336,11 +427,22 @@ button {
   font-size: 21px;
 }
 
+.stats-intro {
+  margin: -4px 0 12px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
   margin-bottom: 12px;
+}
+
+.summary-grid.summary-four {
+  grid-template-columns: repeat(4, 1fr);
 }
 
 .summary-pill {
@@ -388,6 +490,92 @@ button {
   border: 1px solid #d7e4db;
   border-radius: 10px;
   overflow: hidden;
+}
+
+.leak-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.leak-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 12px;
+  align-items: center;
+  padding: 11px;
+  border: 1px solid #d2e0d7;
+  border-radius: 11px;
+  background: #ffffff;
+}
+
+.leak-title,
+.leak-meta,
+.leak-due {
+  display: block;
+}
+
+.leak-title {
+  color: #173f31;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.leak-meta {
+  margin-top: 3px;
+  color: #587066;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.leak-due {
+  margin-top: 4px;
+  color: #80541c;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.drill-leak-btn {
+  min-height: 44px;
+  border: 1px solid #9bbcaf;
+  border-radius: 10px;
+  background: #edf7f1;
+  color: #1d5b42;
+  font-size: 13px;
+  font-weight: 900;
+  padding: 7px 10px;
+}
+
+.priority-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid #b8d0c2;
+  border-radius: 12px;
+  background: #f0f7f3;
+}
+
+.priority-card strong,
+.priority-card span {
+  display: block;
+}
+
+.priority-card span {
+  margin-top: 3px;
+  color: #4d685e;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.mastery-line {
+  margin: 10px 0 0;
+  color: #526d62;
+  font-size: 13px;
 }
 
 .stat-row,
@@ -475,6 +663,7 @@ button {
   background: #f4f8f6;
   color: #21463a;
   font-weight: 700;
+  min-height: 44px;
 }
 
 .check-row input {
@@ -500,6 +689,7 @@ button {
   background: #f4f8f6;
   color: #21463a;
   font-weight: 700;
+  min-height: 44px;
 }
 
 .radio-row input {
@@ -539,6 +729,32 @@ button {
   font-weight: 700;
 }
 
+.setting-note a {
+  color: #1f5e47;
+  font-weight: 900;
+}
+
+.spot-details {
+  border: 1px solid #cbdcd2;
+  border-radius: 10px;
+  background: #f8fbf9;
+}
+
+.spot-details summary {
+  min-height: 44px;
+  padding: 12px;
+  cursor: pointer;
+  color: #21463a;
+  font-weight: 900;
+}
+
+.spot-toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  padding: 0 8px 8px;
+}
+
 .chart-card {
   max-width: min(760px, 100%);
 }
@@ -561,7 +777,7 @@ button {
 }
 
 .chart-control select {
-  min-height: 40px;
+  min-height: 44px;
   border: 1px solid #b9ccbf;
   border-radius: 9px;
   background: #ffffff;
@@ -605,20 +821,34 @@ button {
 
 .chart-matrix {
   display: grid;
-  grid-template-columns: repeat(13, minmax(0, 1fr));
+  grid-template-columns: repeat(13, 44px);
   gap: 3px;
-  width: 100%;
-  max-width: 540px;
+  width: 608px;
   margin: 0 auto;
 }
 
+.chart-scroll {
+  width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding: 3px 1px 8px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.chart-scroll-hint {
+  margin: -3px 0 7px;
+  color: #60756d;
+  font-size: 12px;
+  text-align: center;
+}
+
 .chart-cell {
-  aspect-ratio: 1 / 1;
-  min-width: 0;
+  width: 44px;
+  height: 44px;
   border: 1px solid rgba(25, 63, 50, 0.18);
   border-radius: 5px;
   color: #12382b;
-  font-size: clamp(9px, 2.6vw, 13px);
+  font-size: 12px;
   font-weight: 900;
   line-height: 1;
   padding: 0;
@@ -703,10 +933,76 @@ button {
     grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 }
+
+@media (max-width: 560px) {
+  .app {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .topbar {
+    grid-template-columns: 1fr;
+    gap: 9px;
+  }
+
+  .topbar h1 {
+    font-size: 25px;
+  }
+
+  .topbar-actions {
+    width: 100%;
+  }
+
+  .topbar-actions .ghost-btn {
+    min-width: 0;
+    flex: 1 1 0;
+  }
+
+  .actions.actions-three {
+    gap: 7px;
+  }
+
+  .action-btn {
+    min-height: 62px;
+    font-size: 20px;
+  }
+
+  .summary-grid.summary-four {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .priority-card,
+  .leak-card {
+    grid-template-columns: 1fr;
+  }
+
+  .drill-leak-btn {
+    width: 100%;
+  }
+
+  .spot-toggle-grid,
+  .toggle-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .session-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .coach-row {
+    grid-template-columns: 76px minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-progress-fill {
+    transition: none;
+  }
+}
 </style>
 </head>
 <body>
-  <div class="app">
+  <div id="appContent" class="app">
     <header class="topbar">
       <div>
         <h1>Poto Preflop Trainer</h1>
@@ -718,88 +1014,128 @@ button {
       </div>
     </header>
 
+    <aside id="strategyStatusBanner" class="strategy-status" aria-live="polite">
+      <strong id="strategyStatusTitle">Provisional live baseline</strong>
+      <span id="strategyStatusCopy">Internally checked training ranges; not yet independently solver- or expert-reviewed. <a href="./docs/POTO_CALIBRATION.md">Poto assumptions</a></span>
+    </aside>
+
     <section class="quiz-card">
-      <p id="spotLine" class="spot-line">Preflop Decision</p>
-      <p id="assumptionLine" class="assumption-line">Live $1/$3 Default · 9-handed · 100-133bb · no ante</p>
-      <p id="samplingLine" class="sampling-line hidden">Sampling: Plausible only</p>
-      <p id="handLine" class="hand-line">AKo</p>
-      <p class="prompt">Choose the default action</p>
-      <div id="actionsRow" class="actions">
-        <button id="yesActionBtn" class="action-btn action-yes" type="button">OPEN</button>
-        <button id="callActionBtn" class="action-btn action-call hidden" type="button">CALL</button>
-        <button id="noActionBtn" class="action-btn action-no" type="button">FOLD</button>
+      <div class="session-head">
+        <span id="sessionLabel">10-minute focus</span>
+        <span id="sessionProgressText">0 / 20</span>
       </div>
-      <div id="feedbackBox" class="feedback hidden" aria-live="polite">
-        <p id="resultLine" class="feedback-copy"></p>
-        <p id="detailLine" class="feedback-detail"></p>
+      <div id="sessionProgressTrack" class="session-progress-track" role="progressbar" aria-label="Session progress" aria-valuemin="0" aria-valuemax="20" aria-valuenow="0">
+        <div id="sessionProgressFill" class="session-progress-fill"></div>
       </div>
-      <button id="whyBtn" class="why-btn hidden" type="button">Show explanation</button>
-      <div id="whyLine" class="coach-panel hidden">
-        <div class="coach-row">
-          <span class="coach-label">Why this hand</span>
-          <p id="coachReasonLine" class="coach-copy"></p>
+
+      <div id="questionPanel" role="group" tabindex="-1" aria-labelledby="spotLine handLine" aria-describedby="assumptionLine samplingLine">
+        <p id="spotLine" class="spot-line">Preflop Decision</p>
+        <p id="assumptionLine" class="assumption-line">Live $1/$3 Default · 9-handed · 100-133bb · no ante</p>
+        <p id="samplingLine" class="sampling-line hidden">Focused high-value review</p>
+        <p id="handLine" class="hand-line">AKo</p>
+        <p class="prompt">Choose the default action</p>
+        <div id="actionsRow" class="actions">
+          <button id="yesActionBtn" class="action-btn action-yes" type="button">OPEN</button>
+          <button id="callActionBtn" class="action-btn action-call hidden" type="button">CALL</button>
+          <button id="noActionBtn" class="action-btn action-no" type="button">FOLD</button>
         </div>
-        <div id="coachCorrectionRow" class="coach-row hidden">
-          <span class="coach-label">Your choice</span>
-          <p id="coachCorrectionLine" class="coach-copy"></p>
+        <div id="feedbackBox" class="feedback hidden" aria-live="polite">
+          <p id="resultLine" class="feedback-copy"></p>
+          <p id="detailLine" class="feedback-detail"></p>
         </div>
-        <div id="coachAdjustmentRow" class="coach-row">
-          <span class="coach-label">Change when</span>
-          <p id="coachAdjustmentLine" class="coach-copy"></p>
+        <button id="whyBtn" class="why-btn hidden" type="button" aria-expanded="false" aria-controls="whyLine">Show explanation</button>
+        <div id="whyLine" class="coach-panel hidden">
+          <div class="coach-row">
+            <span class="coach-label">Why this hand</span>
+            <p id="coachReasonLine" class="coach-copy"></p>
+          </div>
+          <div id="coachCorrectionRow" class="coach-row hidden">
+            <span class="coach-label">Your choice</span>
+            <p id="coachCorrectionLine" class="coach-copy"></p>
+          </div>
+          <div id="coachRangePlanRow" class="coach-row hidden">
+            <span class="coach-label">Range plan</span>
+            <p id="coachRangePlanLine" class="coach-copy"></p>
+          </div>
+          <div id="coachAdjustmentRow" class="coach-row hidden">
+            <span class="coach-label">Verified switch</span>
+            <p id="coachAdjustmentLine" class="coach-copy"></p>
+          </div>
+          <div class="coach-row">
+            <span class="coach-label">Remember</span>
+            <p id="coachTakeawayLine" class="coach-copy"></p>
+          </div>
         </div>
-        <div class="coach-row">
-          <span class="coach-label">Remember</span>
-          <p id="coachTakeawayLine" class="coach-copy"></p>
+        <button id="viewCurrentChartBtn" class="chart-link-btn hidden" type="button">View current chart</button>
+        <button id="nextBtn" class="next-btn hidden" type="button">Next hand</button>
+      </div>
+
+      <div id="sessionCompletePanel" class="session-complete hidden" aria-live="polite">
+        <h2 id="sessionCompleteTitle">Focus complete</h2>
+        <p id="sessionCompleteSummary"></p>
+        <div class="session-actions">
+          <button id="restartSessionBtn" class="next-btn" type="button">Start another focus</button>
+          <button id="reviewSessionLeakBtn" class="drill-leak-btn" type="button">Review top leak</button>
         </div>
       </div>
-      <button id="viewCurrentChartBtn" class="chart-link-btn hidden" type="button">View current chart</button>
-      <button id="nextBtn" class="next-btn hidden" type="button">Next Hand</button>
     </section>
 
     <section class="stats-card">
-      <h2>Stats</h2>
-      <div class="summary-grid">
+      <h2>Practice priority</h2>
+      <p class="stats-intro">Ranked by due reviews, recurring mistakes, and learning value. This is practice priority—not estimated dollars saved—until the strategy corpus contains reviewed EV data.</p>
+      <div class="summary-grid summary-four">
         <div class="summary-pill">
           <span class="pill-label">Attempts</span>
           <span id="attemptsValue" class="pill-value">0</span>
         </div>
         <div class="summary-pill">
-          <span class="pill-label">Within strategy</span>
-          <span id="correctValue" class="pill-value">0</span>
+          <span class="pill-label">Due now</span>
+          <span id="dueValue" class="pill-value">0</span>
         </div>
         <div class="summary-pill">
           <span class="pill-label">Default accuracy</span>
           <span id="accuracyValue" class="pill-value">--</span>
         </div>
+        <div class="summary-pill">
+          <span class="pill-label">Avg response</span>
+          <span id="responseValue" class="pill-value">--</span>
+        </div>
+      </div>
+
+      <div id="nextPriorityCard" class="priority-card">
+        <div>
+          <strong id="nextPriorityTitle">No established leak yet</strong>
+          <span id="nextPriorityCopy">Answer a few decisions and the trainer will identify the exact spot to revisit.</span>
+        </div>
+        <button id="drillTopLeakBtn" class="drill-leak-btn" type="button" disabled>Drill it</button>
       </div>
 
       <div class="stat-group">
-        <h3>Default / strategy by First-in Position</h3>
-        <ul id="rfiStatsList" class="stat-list"></ul>
+        <h3>Exact leaks</h3>
+        <ul id="leakList" class="leak-list"></ul>
       </div>
-      <div class="stat-group">
-        <h3>Default / strategy by Facing-open Spot</h3>
-        <ul id="vsOpenStatsList" class="stat-list"></ul>
-      </div>
-      <div class="stat-group">
-        <h3>Top 10 Missed Hands</h3>
-        <ul id="missList" class="miss-list"></ul>
-      </div>
+      <p id="masteryLine" class="mastery-line">No review history yet.</p>
     </section>
   </div>
 
   <div id="settingsModal" class="modal hidden" aria-hidden="true">
-    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" tabindex="-1">
       <div class="modal-header">
         <h2 id="settingsTitle">Settings</h2>
         <button id="closeSettingsBtn" class="ghost-btn" type="button">Done</button>
       </div>
-      <p class="modal-copy">Pick the live $1/$3 assumptions and spots for the decision drill. These are training defaults, not universal answers.</p>
+      <p class="modal-copy">Choose the exact situations to study. The fixed Hero baseline and Villain model are separate; these provisional ranges are not universal answers.</p>
 
       <div class="setting-block">
-        <h3>Range profile</h3>
-        <p class="setting-note">Sets Hero's opening style when first in and Villain's opening style when facing an open.</p>
-        <div id="profileGrid" class="radio-stack"></div>
+        <h3>Hero first-in baseline</h3>
+        <p class="setting-note">Controls only Hero's first-in strategy.</p>
+        <div id="heroBaselineGrid" class="radio-stack"></div>
+      </div>
+
+      <div class="setting-block">
+        <h3>Villain opening model</h3>
+        <p id="profileDefinitionLine" class="setting-note">Controls only the opener when Hero is facing a raise.</p>
+        <div id="villainProfileGrid" class="radio-stack"></div>
       </div>
 
       <div class="setting-block">
@@ -818,14 +1154,19 @@ button {
       </div>
 
       <div class="setting-block">
-        <h3>Openers for facing opens</h3>
-        <div id="openerToggleGrid" class="toggle-grid"></div>
+        <h3>Exact facing-open spots</h3>
+        <details class="spot-details">
+          <summary id="spotSelectionSummary">Choose exact opener → Hero spots</summary>
+          <div id="vsSpotToggleGrid" class="spot-toggle-grid"></div>
+        </details>
       </div>
 
       <div class="setting-block">
         <h3>Decision mix</h3>
         <div id="decisionMixNote" class="radio-stack"></div>
       </div>
+
+      <p class="setting-note"><strong>Provisional live baseline.</strong> Verify the room structure before treating it as Poto-specific. <a href="./docs/POTO_CALIBRATION.md">View the calibration checklist.</a></p>
 
       <button id="quickLiveDefaultsBtn" class="next-btn" type="button">Quick Live Defaults</button>
       <button id="resetStatsBtn" class="reset-btn" type="button">Reset Stats</button>
@@ -834,7 +1175,7 @@ button {
   </div>
 
   <div id="chartModal" class="modal hidden" aria-hidden="true">
-    <div class="modal-card chart-card" role="dialog" aria-modal="true" aria-labelledby="chartTitle">
+    <div class="modal-card chart-card" role="dialog" aria-modal="true" aria-labelledby="chartTitle" tabindex="-1">
       <div class="modal-header">
         <h2 id="chartTitle">Preflop Chart</h2>
         <button id="closeChartBtn" class="ghost-btn" type="button">Done</button>
@@ -856,7 +1197,7 @@ button {
           <select id="chartHeroSelect"></select>
         </label>
         <label id="chartProfileControl" class="chart-control">
-          Profile
+          <span id="chartProfileLabel">Villain model</span>
           <select id="chartProfileSelect"></select>
         </label>
         <label id="chartSizeControl" class="chart-control">
@@ -873,13 +1214,16 @@ button {
         <span class="legend-pill"><span class="legend-dot dot-mixed"></span>Mixed</span>
       </div>
 
-      <div id="chartMatrix" class="chart-matrix" aria-label="13 by 13 hand chart"></div>
+      <p class="chart-scroll-hint">Swipe horizontally on a phone. Every hand is a full-size tap target.</p>
+      <div class="chart-scroll" tabindex="0" aria-label="Scrollable 13 by 13 hand chart">
+        <div id="chartMatrix" class="chart-matrix" aria-label="13 by 13 hand chart"></div>
+      </div>
       <div id="chartDetail" class="chart-detail" aria-live="polite"></div>
     </div>
   </div>
 
-<script src="./range-engine.js?v=20260710-suited-coach"></script>
-<script src="./trainer-scheduler.js?v=20260710-suited-coach"></script>
-<script src="./app.js?v=20260710-suited-coach"></script>
+<script src="./range-engine.js?v=20260710-high-ev-v4"></script>
+<script src="./trainer-scheduler.js?v=20260710-high-ev-v4"></script>
+<script src="./app.js?v=20260710-high-ev-v4"></script>
 </body>
 </html>
