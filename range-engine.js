@@ -36,9 +36,39 @@
   };
 
   const OPENER_PROFILES = [
-    { id: "TIGHT", label: "Tight" },
-    { id: "BALANCED", label: "Balanced" },
-    { id: "LOOSE", label: "Loose" }
+    {
+      id: "TIGHT",
+      label: "Tight",
+      description: "Uses the preset's tighter per-position opening table. See the derived position range before assigning this profile."
+    },
+    {
+      id: "BALANCED",
+      label: "Balanced",
+      description: "Uses the preset's middle per-position opening table. This is the default Villain model, not a claim about a specific player."
+    },
+    {
+      id: "LOOSE",
+      label: "Loose",
+      description: "Uses the preset's wider per-position opening table. See the derived position range before assigning this profile."
+    }
+  ];
+
+  const HERO_BASELINES = [
+    {
+      id: "TIGHT",
+      label: "Tight",
+      description: "A deliberately tighter first-in training baseline."
+    },
+    {
+      id: "BALANCED",
+      label: "Balanced",
+      description: "The fixed default first-in training baseline."
+    },
+    {
+      id: "LOOSE",
+      label: "Loose",
+      description: "A deliberately wider first-in training baseline."
+    }
   ];
 
   const OPEN_SIZE_CLASSES = [
@@ -62,8 +92,42 @@
   const RFI_POSITIONS = ["UTG", "UTG1", "MP1", "MP2", "MP3", "CO", "BTN", "SB"];
   const VS_OPEN_OPENERS = ["UTG", "UTG1", "MP1", "MP2", "MP3", "CO", "BTN"];
   const DEFAULT_PROFILE = "BALANCED";
+  const DEFAULT_HERO_BASELINE = "BALANCED";
   const DEFAULT_SIZE = "STANDARD";
   const DEFAULT_PRESET_ID = "live-1-3-default";
+  // Snapshot of every action/allowed-action decision in the active corpus.
+  // Any intentional strategy behavior change must update this value in review.
+  const EXPECTED_ACTION_FINGERPRINT = "fnv1a32:4def4b61";
+
+  const CORPUS_METADATA = Object.freeze({
+    schemaVersion: 1,
+    strategyVersion: "poto-live-1-3-provisional-v4",
+    status: "provisional",
+    reviewStatus: "not-independently-solver-or-expert-reviewed",
+    sourceKind: "hand-authored-training-defaults",
+    provenance: Object.freeze({
+      solverConfiguration: null,
+      solverOutputHash: null,
+      independentExpertReview: null,
+      note: "Migrated from the trainer's hand-authored v3 defaults; no EV values or solver frequencies are asserted."
+    }),
+    configuration: Object.freeze({
+      game: "live-no-limit-holdem-cash",
+      stakesLabel: "$1/$3 training default",
+      players: 9,
+      effectiveStackBb: Object.freeze({ min: 100, max: 133 }),
+      ante: false,
+      rakeModel: null,
+      exactOpenSizesBb: null
+    }),
+    limitations: Object.freeze([
+      "No independently reviewed solver or expert-approved corpus is attached.",
+      "No per-action EV, regret band, or numeric mixed frequency is available.",
+      "Rake, jackpot drop, exact stack depth, straddles, limpers, callers, and numeric raise sizes are not modeled.",
+      "Only the Balanced/Standard action matrix is preserved from v3; non-default profile/size behavior remains an explicitly provisional reset.",
+      "Profile and size controls are operational only where an explicit corpus rule changes the recommendation."
+    ])
+  });
 
   const TEXT = {
     size: "Large live opens reduce implied odds and make dominated calls worse; smaller opens let position and suitedness realize more equity."
@@ -311,12 +375,112 @@
     }
   };
 
+  // Every non-baseline change must name its exact template/profile/size scope.
+  // This intentionally replaces the former global hand-removal lists, which
+  // could fold a stronger member of a hand family while retaining a weaker one.
+  const EXPLICIT_VS_OPEN_ADJUSTMENTS = [
+    {
+      id: "late-sb-tight-qjs-preserve-mix",
+      templateIds: ["CO_SB", "BTN_SB"],
+      profiles: ["TIGHT"],
+      sizes: ["SMALL", "STANDARD", "LARGE"],
+      hands: "QJs",
+      recommendation: {
+        primaryAction: ACTIONS.THREE_BET,
+        allowedActions: [ACTIONS.THREE_BET, ACTIONS.FOLD],
+        defaultFoldWhen: { profiles: [], sizes: [] },
+        frequency: "Use QJs as a selective 3-bet or fold; the corpus does not assign a numeric mix.",
+        explanation: "Keep QJs as a 3-bet-or-fold boundary hand. Pure-folding it while continuing weaker suited connectors would invert this provisional small-blind ladder."
+      }
+    },
+    {
+      id: "late-sb-large-qjs-preserve-mix",
+      templateIds: ["CO_SB", "BTN_SB"],
+      profiles: ["BALANCED", "LOOSE"],
+      sizes: ["LARGE"],
+      hands: "QJs",
+      recommendation: {
+        primaryAction: ACTIONS.THREE_BET,
+        allowedActions: [ACTIONS.THREE_BET, ACTIONS.FOLD],
+        defaultFoldWhen: { profiles: [], sizes: [] },
+        frequency: "Use QJs as a selective 3-bet or fold; the corpus does not assign a numeric mix.",
+        explanation: "Keep QJs as a 3-bet-or-fold boundary hand. Pure-folding it while continuing weaker suited connectors would invert this provisional small-blind ladder."
+      }
+    },
+    {
+      id: "mp-ip-tight-aqo-fold",
+      templateIds: ["MP_IP"],
+      profiles: ["TIGHT"],
+      sizes: ["SMALL", "STANDARD", "LARGE"],
+      hands: "AQo",
+      recommendation: {
+        primaryAction: ACTIONS.FOLD,
+        allowedActions: [ACTIONS.FOLD],
+        explanation: "Fold versus the selected tight middle-position opener. The provisional corpus treats the normal AQo call as too thin in this exact template."
+      }
+    },
+    {
+      id: "mp-ip-large-98s-fold",
+      templateIds: ["MP_IP"],
+      profiles: ["TIGHT", "BALANCED", "LOOSE"],
+      sizes: ["LARGE"],
+      hands: "98s",
+      recommendation: {
+        primaryAction: ACTIONS.FOLD,
+        allowedActions: [ACTIONS.FOLD],
+        explanation: "Fold versus the selected large size. In this exact middle-position in-position template, 98s is the weakest suited connector removed by the provisional corpus."
+      }
+    },
+    {
+      id: "mp-sb-loose-qjs-three-bet",
+      templateIds: ["MP_SB"],
+      profiles: ["LOOSE"],
+      sizes: ["SMALL", "STANDARD"],
+      hands: "QJs",
+      recommendation: {
+        primaryAction: ACTIONS.THREE_BET,
+        allowedActions: [ACTIONS.THREE_BET, ACTIONS.FOLD],
+        frequency: "3-bet selectively; fold when the opener is not actually using the modeled loose range.",
+        explanation: "Against the selected loose middle-position opener and non-large sizing, use QJs as a selective small-blind 3-bet rather than a flat."
+      }
+    }
+  ];
+
   const ALL_HAND_CLASSES = buildAllHandClasses();
   const HAND_CLASS_SET = new Set(ALL_HAND_CLASSES);
   const PARSE_CACHE = new Map();
+  const CORPUS_FINGERPRINT_CACHE = new Map();
+  const CORPUS_ACTION_SNAPSHOT_CACHE = new Map();
+
+  deepFreeze(OPENER_PROFILES);
+  deepFreeze(HERO_BASELINES);
+  deepFreeze(OPEN_SIZE_CLASSES);
+  deepFreeze(RANGE_PRESETS);
+  deepFreeze(EXPLICIT_VS_OPEN_ADJUSTMENTS);
+
+  function deepFreeze(value) {
+    if (!value || typeof value !== "object" || Object.isFrozen(value)) {
+      return value;
+    }
+    Object.getOwnPropertyNames(value).forEach((key) => deepFreeze(value[key]));
+    return Object.freeze(value);
+  }
 
   function normalizeProfile(profile) {
     return OPENER_PROFILES.some((item) => item.id === profile) ? profile : DEFAULT_PROFILE;
+  }
+
+  function normalizeHeroBaseline(baseline) {
+    return HERO_BASELINES.some((item) => item.id === baseline) ? baseline : DEFAULT_HERO_BASELINE;
+  }
+
+  function resolveHeroBaseline(args) {
+    if (args && (args.heroBaseline || args.heroRfiStyle)) {
+      return normalizeHeroBaseline(args.heroBaseline || args.heroRfiStyle);
+    }
+    // Villain modeling must never silently rewrite Hero's first-in baseline.
+    // Legacy settings migration belongs in the UI, not in strategy resolution.
+    return DEFAULT_HERO_BASELINE;
   }
 
   function normalizeSize(size) {
@@ -325,6 +489,166 @@
 
   function normalizePresetId(presetId) {
     return RANGE_PRESETS[presetId] ? presetId : DEFAULT_PRESET_ID;
+  }
+
+  function heroBaselineLabel(baseline) {
+    const id = normalizeHeroBaseline(baseline);
+    const row = HERO_BASELINES.find((item) => item.id === id) || HERO_BASELINES[1];
+    return row.label;
+  }
+
+  function stableStringify(value) {
+    if (value === null || typeof value !== "object") {
+      return JSON.stringify(value);
+    }
+    if (Array.isArray(value)) {
+      return "[" + value.map((item) => stableStringify(item)).join(",") + "]";
+    }
+    return "{" + Object.keys(value).sort().map((key) => (
+      JSON.stringify(key) + ":" + stableStringify(value[key])
+    )).join(",") + "}";
+  }
+
+  function fnv1a32(text) {
+    let hash = 0x811c9dc5;
+    for (let index = 0; index < text.length; index += 1) {
+      hash ^= text.charCodeAt(index);
+      hash = Math.imul(hash, 0x01000193);
+    }
+    return (hash >>> 0).toString(16).padStart(8, "0");
+  }
+
+  function getCorpusFingerprint(presetId) {
+    const id = normalizePresetId(presetId);
+    if (!CORPUS_FINGERPRINT_CACHE.has(id)) {
+      CORPUS_FINGERPRINT_CACHE.set(id, "fnv1a32:" + fnv1a32(getCorpusActionSnapshot(id)));
+    }
+    return CORPUS_FINGERPRINT_CACHE.get(id);
+  }
+
+  function getCorpusActionSnapshot(presetId) {
+    const id = normalizePresetId(presetId);
+    if (!CORPUS_ACTION_SNAPSHOT_CACHE.has(id)) {
+      CORPUS_ACTION_SNAPSHOT_CACHE.set(id, stableStringify(buildActionFingerprintSource(id)));
+    }
+    return CORPUS_ACTION_SNAPSHOT_CACHE.get(id);
+  }
+
+  function buildActionFingerprintSource(presetId) {
+    const rfi = [];
+    HERO_BASELINES.forEach(({ id: heroBaseline }) => {
+      RFI_POSITIONS.forEach((position) => {
+        ALL_HAND_CLASSES.forEach((hand) => {
+          const recommendation = recommendCore({
+            mode: MODES.RFI,
+            heroBaseline,
+            position,
+            hand,
+            presetId
+          });
+          rfi.push([heroBaseline, position, hand, actionSignature(recommendation)]);
+        });
+      });
+    });
+
+    const vsOpen = [];
+    OPENER_PROFILES.forEach(({ id: openerProfile }) => {
+      OPEN_SIZE_CLASSES.forEach(({ id: openSize }) => {
+        getValidVsOpenSpots().forEach((spot) => {
+          ALL_HAND_CLASSES.forEach((hand) => {
+            const recommendation = recommendCore({
+              mode: MODES.VS_OPEN,
+              openerPosition: spot.openerPosition,
+              heroPosition: spot.heroPosition,
+              openerProfile,
+              openSize,
+              hand,
+              presetId
+            });
+            vsOpen.push([openerProfile, openSize, spot.key, hand, actionSignature(recommendation)]);
+          });
+        });
+      });
+    });
+
+    const fourBet = [];
+    ["DEFAULT", "AGGRO"].forEach((fourBetStyle) => {
+      ALL_HAND_CLASSES.forEach((hand) => {
+        const recommendation = recommendCore({
+          mode: MODES.FOUR_BET,
+          fourBetStyle,
+          hand,
+          presetId
+        });
+        fourBet.push([fourBetStyle, hand, actionSignature(recommendation)]);
+      });
+    });
+
+    return {
+      strategyVersion: CORPUS_METADATA.strategyVersion,
+      presetId,
+      rfi,
+      vsOpen,
+      fourBet
+    };
+  }
+
+  function getCorpusMetadata(presetId) {
+    const id = normalizePresetId(presetId);
+    const preset = RANGE_PRESETS[id];
+    return {
+      ...CORPUS_METADATA,
+      presetId: id,
+      presetName: preset.name,
+      assumptions: preset.assumptions,
+      fingerprint: getCorpusFingerprint(id)
+    };
+  }
+
+  function combinationCount(hand) {
+    const normalized = normalizeHand(hand);
+    if (normalized.length === 2) {
+      return 6;
+    }
+    if (normalized.endsWith("s")) {
+      return 4;
+    }
+    if (normalized.endsWith("o")) {
+      return 12;
+    }
+    return 0;
+  }
+
+  function countRangeCombinations(range) {
+    let count = 0;
+    parseRangeList(range).forEach((hand) => {
+      count += combinationCount(hand);
+    });
+    return count;
+  }
+
+  function getVillainProfileDefinition(profile, position, presetId) {
+    const id = normalizePresetId(presetId);
+    const normalizedProfile = normalizeProfile(profile);
+    const normalizedPosition = RFI_POSITIONS.includes(position) ? position : "UTG";
+    const row = RANGE_PRESETS[id].rfi[normalizedProfile][normalizedPosition];
+    const pureOpenCombinations = countRangeCombinations(row.open);
+    const mixedCombinations = countRangeCombinations(row.mixed);
+    const formatPercent = (count) => Math.round((count / 1326) * 1000) / 10;
+    return {
+      id: normalizedProfile,
+      label: profileLabel(normalizedProfile),
+      description: (OPENER_PROFILES.find((item) => item.id === normalizedProfile) || OPENER_PROFILES[1]).description,
+      position: normalizedPosition,
+      positionLabel: positionLabel(normalizedPosition),
+      pureOpenCombinations,
+      mixedCombinations,
+      pureOpenPercent: formatPercent(pureOpenCombinations),
+      upperBoundOpenPercent: formatPercent(pureOpenCombinations + mixedCombinations),
+      range: row.open,
+      mixedBoundary: row.mixed,
+      disclosure: "The percentage is a derived lower-to-upper bound because this provisional corpus does not assign numeric frequencies to mixed hands."
+    };
   }
 
   function normalizeHand(hand) {
@@ -369,7 +693,7 @@
     const profile = profileLabel(args && args.openerProfile);
     const size = sizeLabel(args && args.openSize);
     if (args && args.mode === MODES.RFI) {
-      return preset.assumptions + " · " + profile + " RFI style";
+      return preset.assumptions + " · Hero " + heroBaselineLabel(resolveHeroBaseline(args)) + " RFI style";
     }
     if (args && args.mode === MODES.VS_OPEN) {
       return preset.assumptions + " · " + size + " · " + profile + " opener";
@@ -391,14 +715,244 @@
     return POSITION_LABELS[position] || String(position || "");
   }
 
-  function attachCoach(args, recommendation) {
+  function actionSignature(recommendation) {
+    return recommendation.primaryAction + "|" + (recommendation.allowedActions || []).slice().sort().join("|");
+  }
+
+  function dimensionSensitivity(args, dimension, values) {
+    const requestedHand = normalizeHand(args && args.hand);
+    const hands = HAND_CLASS_SET.has(requestedHand) ? [requestedHand] : ALL_HAND_CLASSES;
+    const baseArgs = { ...(args || {}) };
+    if (baseArgs.mode === MODES.RFI) {
+      baseArgs.heroBaseline = resolveHeroBaseline(baseArgs);
+    }
+    const variants = values.map((id) => {
+      const signatures = {};
+      hands.forEach((hand) => {
+        const variantArgs = { ...baseArgs, hand, [dimension]: id };
+        signatures[hand] = actionSignature(recommendCore(variantArgs));
+      });
+      return { id, signatures };
+    });
+    const affectedHands = hands.filter((hand) => (
+      new Set(variants.map((variant) => variant.signatures[hand])).size > 1
+    ));
+    const currentValue = dimension === "openerProfile"
+      ? normalizeProfile(baseArgs.openerProfile)
+      : (dimension === "openSize"
+        ? normalizeSize(baseArgs.openSize)
+        : resolveHeroBaseline(baseArgs));
     return {
-      ...recommendation,
-      coach: buildCoachNotes(args, recommendation)
+      operational: affectedHands.length > 0,
+      currentValue,
+      affectedHandCount: affectedHands.length,
+      totalHandCount: hands.length,
+      affectedHands,
+      variants: variants.map((variant) => ({
+        id: variant.id,
+        signatures: hands.length === 1 ? variant.signatures[requestedHand] : undefined
+      })),
+      disclosure: affectedHands.length
+        ? "This control changes at least one queried action in the provisional corpus."
+        : "This control is an operational no-op for the queried decision scope."
     };
   }
 
-  function buildCoachNotes(args, recommendation) {
+  function getStrategySensitivity(args) {
+    const input = { ...(args || {}) };
+    const mode = input.mode || MODES.RFI;
+    input.mode = mode;
+    let openerProfile;
+    let openSize;
+    let heroBaseline;
+    if (mode === MODES.RFI) {
+      const fixedHeroBaseline = resolveHeroBaseline(input);
+      openerProfile = dimensionSensitivity(
+        { ...input, heroBaseline: fixedHeroBaseline },
+        "openerProfile",
+        OPENER_PROFILES.map((item) => item.id)
+      );
+      openSize = dimensionSensitivity(input, "openSize", OPEN_SIZE_CLASSES.map((item) => item.id));
+      heroBaseline = dimensionSensitivity(input, "heroBaseline", HERO_BASELINES.map((item) => item.id));
+    } else if (mode === MODES.VS_OPEN) {
+      openerProfile = dimensionSensitivity(input, "openerProfile", OPENER_PROFILES.map((item) => item.id));
+      openSize = dimensionSensitivity(input, "openSize", OPEN_SIZE_CLASSES.map((item) => item.id));
+      heroBaseline = {
+        operational: false,
+        currentValue: resolveHeroBaseline(input),
+        affectedHandCount: 0,
+        totalHandCount: HAND_CLASS_SET.has(normalizeHand(input.hand)) ? 1 : ALL_HAND_CLASSES.length,
+        affectedHands: [],
+        variants: HERO_BASELINES.map((item) => ({ id: item.id })),
+        disclosure: "Hero's RFI baseline does not change a facing-open recommendation."
+      };
+    } else {
+      const totalHandCount = HAND_CLASS_SET.has(normalizeHand(input.hand)) ? 1 : ALL_HAND_CLASSES.length;
+      const noOp = (currentValue, values, disclosure) => ({
+        operational: false,
+        currentValue,
+        affectedHandCount: 0,
+        totalHandCount,
+        affectedHands: [],
+        variants: values.map((id) => ({ id })),
+        disclosure
+      });
+      openerProfile = noOp(normalizeProfile(input.openerProfile), OPENER_PROFILES.map((item) => item.id), "Opener profile is not modeled for this mode.");
+      openSize = noOp(normalizeSize(input.openSize), OPEN_SIZE_CLASSES.map((item) => item.id), "Open size is not modeled for this mode.");
+      heroBaseline = noOp(resolveHeroBaseline(input), HERO_BASELINES.map((item) => item.id), "Hero RFI baseline is not modeled for this mode.");
+    }
+    return {
+      mode,
+      corpusVersion: CORPUS_METADATA.strategyVersion,
+      scope: HAND_CLASS_SET.has(normalizeHand(input.hand)) ? "hand" : "context",
+      dimensions: { openerProfile, openSize, heroBaseline }
+    };
+  }
+
+  function semanticHandFamily(hand) {
+    const normalized = normalizeHand(hand);
+    const traits = classifyHand(normalized);
+    if (traits.isPair) {
+      return RANKS.map((rank) => rank + rank);
+    }
+    const suffix = traits.isSuited ? "s" : "o";
+    if (traits.gap <= 2) {
+      const out = [];
+      const rankDistance = traits.gap + 1;
+      for (let highIndex = 0; highIndex + rankDistance < RANKS.length; highIndex += 1) {
+        out.push(RANKS[highIndex] + RANKS[highIndex + rankDistance] + suffix);
+      }
+      return out;
+    }
+    const out = [];
+    for (let lowIndex = traits.highRankIndex + 1; lowIndex < RANKS.length; lowIndex += 1) {
+      out.push(traits.highRank + RANKS[lowIndex] + suffix);
+    }
+    return out;
+  }
+
+  function getNearestContrast(args, recommendation) {
+    const hand = normalizeHand(args && args.hand);
+    if (!HAND_CLASS_SET.has(hand)) {
+      return null;
+    }
+    const family = semanticHandFamily(hand);
+    const handIndex = family.indexOf(hand);
+    const currentSignature = actionSignature(recommendation || recommendCore(args));
+    for (let distance = 1; distance < family.length; distance += 1) {
+      const candidates = [handIndex - distance, handIndex + distance];
+      for (const candidateIndex of candidates) {
+        if (candidateIndex < 0 || candidateIndex >= family.length) {
+          continue;
+        }
+        const candidateHand = family[candidateIndex];
+        const candidate = recommendCore({ ...args, hand: candidateHand });
+        if (actionSignature(candidate) !== currentSignature) {
+          return {
+            hand: candidateHand,
+            relationship: candidateIndex < handIndex ? "higher-ranked" : "lower-ranked",
+            primaryAction: candidate.primaryAction,
+            allowedActions: candidate.allowedActions.slice(),
+            verifiedBy: "corpus-query",
+            corpusStatus: CORPUS_METADATA.status
+          };
+        }
+      }
+    }
+    return null;
+  }
+
+  function getConceptTags(args, recommendation) {
+    const rec = recommendation || recommendCore(args || {});
+    const traits = classifyHand(normalizeHand((args && args.hand) || rec.hand));
+    const tags = ["source:" + CORPUS_METADATA.status, "mode:" + String(rec.mode || "unknown").toLowerCase()];
+    if (traits.isPair) tags.push("hand:pocket-pair");
+    if (traits.isSuited) tags.push("hand:suited");
+    if (traits.isOffsuit) tags.push("hand:offsuit");
+    if (traits.isBroadway) tags.push("hand:broadway");
+    if (!traits.isPair && traits.gap === 0) tags.push("shape:connector");
+    if (!traits.isPair && traits.gap === 1) tags.push("shape:one-gapper");
+    if (traits.isSuitedAce) tags.push("hand:suited-ace");
+    if (args && (args.heroPosition === "SB" || args.heroPosition === "BB")) tags.push("position:blind");
+    if (args && args.heroPosition === "SB") tags.push("position:small-blind");
+    if (args && args.heroPosition === "BB") tags.push("position:big-blind");
+    if (args && (args.openerPosition === "UTG" || args.openerPosition === "UTG1")) tags.push("opener:early");
+    if ((rec.allowedActions || []).length > 1) tags.push("decision:mixed");
+    tags.push("action:" + String(rec.primaryAction || "unknown").toLowerCase());
+    if (rec.actionTag) tags.push("role:" + rec.actionTag.replace(/\s+/g, "-"));
+    return Array.from(new Set(tags));
+  }
+
+  function getStructuredCoachingFacts(args, recommendation) {
+    const input = { ...(args || {}) };
+    const rec = recommendation || recommendCore(input);
+    const sensitivity = getStrategySensitivity({ ...input, hand: rec.hand });
+    const counterfactuals = [];
+    Object.entries(sensitivity.dimensions).forEach(([dimension, detail]) => {
+      if (!detail.operational) {
+        return;
+      }
+      detail.variants.forEach((variant) => {
+        if (variant.id === detail.currentValue || !variant.signatures) {
+          return;
+        }
+        const variantArgs = { ...input, hand: rec.hand, [dimension]: variant.id };
+        if (input.mode === MODES.RFI && dimension === "openerProfile") {
+          variantArgs.heroBaseline = resolveHeroBaseline(input);
+        }
+        const alternative = recommendCore(variantArgs);
+        if (actionSignature(alternative) !== actionSignature(rec)) {
+          counterfactuals.push({
+            dimension,
+            from: detail.currentValue,
+            to: variant.id,
+            primaryAction: alternative.primaryAction,
+            allowedActions: alternative.allowedActions.slice(),
+            verifiedBy: "corpus-query",
+            corpusStatus: CORPUS_METADATA.status
+          });
+        }
+      });
+    });
+    const nearestContrast = getNearestContrast(input, rec);
+    return {
+      facts: {
+        sourceStatus: CORPUS_METADATA.status,
+        reviewStatus: CORPUS_METADATA.reviewStatus,
+        frequencyKind: rec.allowedActions.length > 1 ? "qualitative-mix" : "pure-default",
+        actionFrequencyPercent: null,
+        evRegretBand: null,
+        strategyRuleId: rec.strategyRuleId || "base-template",
+        operationalControls: {
+          openerProfile: sensitivity.dimensions.openerProfile.operational,
+          openSize: sensitivity.dimensions.openSize.operational,
+          heroBaseline: sensitivity.dimensions.heroBaseline.operational
+        },
+        nearestContrast
+      },
+      counterfactuals
+    };
+  }
+
+  function attachCoach(args, recommendation) {
+    const structured = getStructuredCoachingFacts(args, recommendation);
+    return {
+      ...recommendation,
+      corpus: {
+        version: CORPUS_METADATA.strategyVersion,
+        status: CORPUS_METADATA.status,
+        reviewStatus: CORPUS_METADATA.reviewStatus,
+        fingerprint: getCorpusFingerprint(args && args.presetId)
+      },
+      heroBaseline: recommendation.mode === MODES.RFI ? resolveHeroBaseline(args) : null,
+      conceptTags: getConceptTags(args, recommendation),
+      facts: structured.facts,
+      counterfactuals: structured.counterfactuals,
+      coach: buildCoachNotes(args, recommendation, structured.facts)
+    };
+  }
+
+  function buildCoachNotes(args, recommendation, facts) {
     const hand = normalizeHand(args.hand || recommendation.hand);
     const traits = classifyHand(hand);
     if (recommendation.mode === MODES.RFI) {
@@ -407,7 +961,7 @@
     if (recommendation.mode === MODES.FOUR_BET) {
       return buildFourBetCoach(recommendation, traits);
     }
-    return buildVsOpenCoach(args, recommendation, traits);
+    return buildVsOpenCoach(args, recommendation, traits, facts);
   }
 
   function buildRfiCoach(args, recommendation, traits) {
@@ -453,7 +1007,7 @@
     };
   }
 
-  function buildVsOpenCoach(args, recommendation, traits) {
+  function buildVsOpenCoach(args, recommendation, traits, facts) {
     const opener = positionLabel(args.openerPosition);
     const hero = positionLabel(args.heroPosition);
     const isBlind = args.heroPosition === "SB" || args.heroPosition === "BB";
@@ -490,29 +1044,33 @@
 
     const isPurePremiumRaise = recommendation.primaryAction === ACTIONS.THREE_BET &&
       recommendation.allowedActions.length === 1 && parseRangeList(THREE_BET_VALUE_CANDIDATES).has(traits.hand);
+    const profileOperational = Boolean(facts && facts.operationalControls && facts.operationalControls.openerProfile);
+    const sizeOperational = Boolean(facts && facts.operationalControls && facts.operationalControls.openSize);
     let adjustment = recommendation.frequency;
     if (isPurePremiumRaise) {
       adjustment = "This hand remains a value 3-bet across the supported opener profiles and sizes.";
-    } else if (recommendation.primaryAction === ACTIONS.FOLD && args.openerProfile === "TIGHT") {
+    } else if (recommendation.primaryAction === ACTIONS.FOLD && args.openerProfile === "TIGHT" && profileOperational) {
       adjustment = "The selected tight profile supports folding; reconsider only if the opener proves wider than described.";
-    } else if (recommendation.primaryAction === ACTIONS.FOLD && args.openSize === "LARGE") {
+    } else if (recommendation.primaryAction === ACTIONS.FOLD && args.openSize === "LARGE" && sizeOperational) {
       adjustment = "The selected 4.5-6bb size supports folding; a smaller price is the main reason to reconsider.";
-    } else if (!adjustment && args.openSize === "LARGE") {
-      adjustment = "A 4.5-6bb open makes thin calls less attractive; keep the bottom of the continue range tight.";
-    } else if (!adjustment && args.openerProfile === "TIGHT") {
-      adjustment = "Against a tight opener, remove thin calls and speculative 3-bets first.";
+    } else if (!adjustment && args.openSize === "LARGE" && sizeOperational) {
+      adjustment = "The selected 4.5-6bb size changes this corpus decision; use the verified size counterfactual rather than a generic tighten-up rule.";
+    } else if (!adjustment && args.openerProfile === "TIGHT" && profileOperational) {
+      adjustment = "The selected tight range changes this corpus decision; use the verified profile counterfactual rather than a generic tighten-up rule.";
     } else if (!adjustment && args.openerProfile === "LOOSE" &&
         recommendation.primaryAction === ACTIONS.FOLD && args.heroPosition === "SB" &&
-        traits.isSuited && traits.isBroadway) {
+        traits.isSuited && traits.isBroadway && profileOperational) {
       adjustment = "The loose range helps, but this hand still lacks enough blocker or value strength for a small-blind 3-bet; do not turn it into a rake-sensitive call.";
-    } else if (!adjustment && args.openerProfile === "LOOSE") {
-      adjustment = "Against a loose opener, widen selectively with position, suitedness, and blockers rather than any two cards.";
+    } else if (!adjustment && args.openerProfile === "LOOSE" && profileOperational) {
+      adjustment = "The selected loose range changes this corpus decision; compare the verified profile counterfactual before applying it at the table.";
     } else if (!adjustment && recommendation.primaryAction === ACTIONS.FOLD &&
-        args.heroPosition === "SB" && traits.isSuited && traits.isBroadway) {
+        args.heroPosition === "SB" && traits.isSuited && traits.isBroadway && profileOperational) {
       const price = args.openSize === "SMALL" ? "At 2-3bb" : "At 3-4bb";
       adjustment = price + ", a genuinely wider opener adds a 3-bet mix; calling remains the least attractive option.";
+    } else if (!adjustment && (profileOperational || sizeOperational)) {
+      adjustment = "A supported setting changes this action; use the verified counterfactual shown for this exact hand and spot.";
     } else if (!adjustment) {
-      adjustment = "A larger open or tighter opener pushes the weakest continue toward fold; a looser opener moves it the other way.";
+      adjustment = "No supported opener profile or size changes this action in the provisional corpus.";
     }
 
     let takeaway;
@@ -719,16 +1277,19 @@
   }
 
   function recommend(args) {
+    const input = args || {};
+    return attachCoach(input, recommendCore(input));
+  }
+
+  function recommendCore(args) {
     const mode = args && args.mode ? args.mode : MODES.RFI;
-    let recommendation;
     if (mode === MODES.RFI) {
-      recommendation = recommendRfi(args);
-    } else if (mode === MODES.FOUR_BET) {
-      recommendation = recommendFourBet(args);
-    } else {
-      recommendation = recommendVsOpen(args);
+      return recommendRfi(args);
     }
-    return attachCoach(args || {}, recommendation);
+    if (mode === MODES.FOUR_BET) {
+      return recommendFourBet(args);
+    }
+    return recommendVsOpen(args);
   }
 
   function getChartCellRecommendation(args) {
@@ -737,10 +1298,10 @@
 
   function recommendRfi(args) {
     const preset = RANGE_PRESETS[normalizePresetId(args && args.presetId)];
-    const profile = normalizeProfile(args && args.openerProfile);
+    const heroBaseline = resolveHeroBaseline(args);
     const position = args && args.position;
     const hand = normalizeHand(args && args.hand);
-    const row = preset.rfi[profile][position] || preset.rfi[DEFAULT_PROFILE].UTG;
+    const row = preset.rfi[heroBaseline][position] || preset.rfi[DEFAULT_HERO_BASELINE].UTG;
     const openSet = parseRangeList(row.open);
     const mixedSet = parseRangeList(row.mixed);
 
@@ -753,7 +1314,8 @@
         frequency: "Open more often at passive tables; fold more often with aggressive players behind.",
         explanation: hand + " is near the " + positionLabel(position) + " opening boundary, so the players behind can move the decision.",
         contextLabel: "RFI " + positionLabel(position),
-        rangeLabel: row.open + " | mixed: " + row.mixed
+        rangeLabel: row.open + " | mixed: " + row.mixed,
+        strategyRuleId: "rfi:" + heroBaseline + ":" + position
       });
     }
 
@@ -763,9 +1325,10 @@
         hand,
         primaryAction: ACTIONS.OPEN,
         allowedActions: [ACTIONS.OPEN],
-        explanation: "Open. " + hand + " is inside the live $1/$3 " + profileLabel(profile).toLowerCase() + " " + positionLabel(position) + " opening range.",
+        explanation: "Open. " + hand + " is inside the live $1/$3 Hero " + heroBaselineLabel(heroBaseline).toLowerCase() + " " + positionLabel(position) + " opening baseline.",
         contextLabel: "RFI " + positionLabel(position),
-        rangeLabel: row.open
+        rangeLabel: row.open,
+        strategyRuleId: "rfi:" + heroBaseline + ":" + position
       });
     }
 
@@ -776,7 +1339,8 @@
       allowedActions: [ACTIONS.FOLD],
       explanation: "Fold. " + hand + " is outside the " + positionLabel(position) + " live $1/$3 opening range under the selected assumptions.",
       contextLabel: "RFI " + positionLabel(position),
-      rangeLabel: row.open + (row.mixed ? " | mixed: " + row.mixed : "")
+      rangeLabel: row.open + (row.mixed ? " | mixed: " + row.mixed : ""),
+      strategyRuleId: "rfi:" + heroBaseline + ":" + position
     });
   }
 
@@ -813,12 +1377,15 @@
         frequency: override.frequency,
         explanation: override.explanation,
         contextLabel: positionLabel(openerPosition) + " opens, Hero " + positionLabel(heroPosition),
-        rangeLabel: buildTemplateRangeLabel(template)
+        rangeLabel: buildTemplateRangeLabel(template),
+        strategyRuleId: "override:" + key + ":" + hand
       });
     }
 
     let rec = baseVsOpenRecommendation(template, hand, openerPosition, heroPosition);
-    rec = applyProfileAndSizeAdjustments(rec, {
+    rec = applyExplicitContextAdjustments(rec, {
+      templateId,
+      spot: key,
       profile,
       size,
       openerPosition,
@@ -942,17 +1509,28 @@
       hand,
       primaryAction: ACTIONS.FOLD,
       allowedActions: [ACTIONS.FOLD],
-      explanation: "Fold. " + hand + " is outside the continue range for this opener, hero position, profile, and sizing because " + describeHandLimitation(classifyHand(hand)) + ".",
+      explanation: "Fold. " + hand + " is outside the provisional continue range for this exact opener and hero position because " + describeHandLimitation(classifyHand(hand)) + ".",
       contextLabel: positionLabel(openerPosition) + " opens, Hero " + positionLabel(heroPosition),
       rangeLabel: buildTemplateRangeLabel(template)
     });
   }
 
-  function applyProfileAndSizeAdjustments(rec, context) {
-    const { profile, size, openerPosition, heroPosition, hand } = context;
-    const isInPosition = POSITION_ORDER.indexOf(heroPosition) < POSITION_ORDER.indexOf("SB");
-    const isEarlyOpen = openerPosition === "UTG" || openerPosition === "UTG1";
-    const isLateOpen = openerPosition === "CO" || openerPosition === "BTN";
+  function applyExplicitContextAdjustments(rec, context) {
+    const { templateId, profile, size, hand } = context;
+    for (const rule of EXPLICIT_VS_OPEN_ADJUSTMENTS) {
+      if (!rule.templateIds.includes(templateId) ||
+          !rule.profiles.includes(profile) ||
+          !rule.sizes.includes(size) ||
+          !parseRangeList(rule.hands).has(hand)) {
+        continue;
+      }
+      return makeRecommendation({
+        ...rec,
+        ...rule.recommendation,
+        strategyRuleId: rule.id
+      });
+    }
+
     const defaultFoldWhen = rec.defaultFoldWhen || { profiles: [], sizes: [] };
     const selectedConditionFavorsFold = rec.allowedActions.includes(ACTIONS.FOLD) &&
       rec.allowedActions.some((action) => action !== ACTIONS.FOLD) &&
@@ -965,60 +1543,12 @@
         primaryAction: ACTIONS.FOLD,
         allowedActions: [ACTIONS.FOLD],
         frequency: "",
-        explanation: "The selected opener profile or size moves this boundary hand to a fold."
+        explanation: "The selected opener profile or size moves this explicitly tagged boundary hand to a fold.",
+        strategyRuleId: "boundary-fold:" + templateId
       });
     }
 
-    if (profile === "TIGHT" && rec.primaryAction === ACTIONS.CALL && parseRangeList("AQo, AJo, KQo, KJo, QJo, ATo, KTs, QTs, JTs, T9s, 98s, 22, 33, 44, 55, 66").has(hand)) {
-      return makeRecommendation({
-        ...rec,
-        primaryAction: ACTIONS.FOLD,
-        allowedActions: [ACTIONS.FOLD],
-        frequency: "",
-        explanation: "Fold versus a tight opener. " + describeHandLimitation(classifyHand(hand)) + "; the normal call is too thin against this range."
-      });
-    }
-
-    if (size === "LARGE" && rec.primaryAction === ACTIONS.CALL && parseRangeList("AJo, KQo, KJo, QJo, ATo, KTo, QTo, JTo, KTs, QTs, JTs, T9s, 98s, 22, 33, 44, 55").has(hand)) {
-      return makeRecommendation({
-        ...rec,
-        primaryAction: ACTIONS.FOLD,
-        allowedActions: [ACTIONS.FOLD],
-        frequency: "",
-        explanation: "Fold versus the large open. " + TEXT.size + " This hand is too dominated or too hard to realize at 4.5-6bb."
-      });
-    }
-
-    if (size === "SMALL" && rec.primaryAction === ACTIONS.FOLD && isInPosition && !isEarlyOpen && parseRangeList("AJo, KQo, KJo, QJo, ATo, KTs, QTs, JTs, T9s, 98s, 87s, 66, 55").has(hand)) {
-      const smallOpenAction = profile === "TIGHT" ? ACTIONS.FOLD : ACTIONS.CALL;
-      return makeRecommendation({
-        ...rec,
-        primaryAction: smallOpenAction,
-        allowedActions: smallOpenAction === ACTIONS.FOLD
-          ? [ACTIONS.FOLD]
-          : [ACTIONS.CALL, ACTIONS.FOLD],
-        frequency: profile === "TIGHT" ? "" : "Call versus small opens when the table is not 3-bet heavy.",
-        explanation: profile === "TIGHT"
-          ? "The small price helps, but the selected tight opener keeps this as a default fold."
-          : "Small sizing improves price and realization in position. This is a close call, not an automatic continue."
-      });
-    }
-
-    if (profile === "LOOSE" && size !== "LARGE" && rec.primaryAction === ACTIONS.FOLD && !isEarlyOpen && parseRangeList("AQo, AJo, KQo, KJo, QJo, ATo, KTs, QJs, QTs, JTs, T9s, 98s, A5s, A4s, 66, 55").has(hand)) {
-      if (heroPosition === "SB" && hand !== "QJs") {
-        return rec;
-      }
-      const action = heroPosition === "SB" || isLateOpen ? ACTIONS.THREE_BET : ACTIONS.CALL;
-      return makeRecommendation({
-        ...rec,
-        primaryAction: action,
-        allowedActions: action === ACTIONS.THREE_BET ? [ACTIONS.THREE_BET, ACTIONS.FOLD] : [ACTIONS.CALL, ACTIONS.FOLD],
-        frequency: action === ACTIONS.THREE_BET ? "Attack loose opens selectively." : "Continue versus loose opens; fold if sizing is large.",
-        explanation: "Loose opener adjustment. The opener reaches this spot with more weak hands, so blockers and position gain value."
-      });
-    }
-
-    return rec;
+    return makeRecommendation({ ...rec, strategyRuleId: rec.strategyRuleId || "template:" + templateId });
   }
 
   function makeRecommendation(input) {
@@ -1033,7 +1563,8 @@
       defaultFoldWhen: input.defaultFoldWhen || { profiles: [], sizes: [] },
       actionTag: input.actionTag || "",
       contextLabel: input.contextLabel || "",
-      rangeLabel: input.rangeLabel || ""
+      rangeLabel: input.rangeLabel || "",
+      strategyRuleId: input.strategyRuleId || ""
     };
   }
 
@@ -1187,9 +1718,10 @@
     return groups;
   }
 
-  function validatePureActionRanges() {
+  function validatePureActionRanges(presetId) {
     const errors = [];
-    const preset = RANGE_PRESETS[DEFAULT_PRESET_ID];
+    const id = normalizePresetId(presetId);
+    const preset = RANGE_PRESETS[id];
     const validProfiles = new Set(OPENER_PROFILES.map((profile) => profile.id));
     const validSizes = new Set(OPEN_SIZE_CLASSES.map((size) => size.id));
     Object.entries(preset.rfi).forEach(([profile, positions]) => {
@@ -1206,6 +1738,10 @@
 
     Object.entries(preset.vsOpen.spotTemplates).forEach(([key, templateId]) => {
       const template = preset.vsOpen.templates[templateId];
+      if (!template) {
+        errors.push(key + " references missing template " + templateId);
+        return;
+      }
       const groups = [
         { label: "pure 3-bet", hands: parseRangeList(template.threeBet) },
         { label: "pure call", hands: parseRangeList(template.call) },
@@ -1258,6 +1794,289 @@
       });
     });
     return errors;
+  }
+
+  function buildIntegrityFamilies() {
+    const families = [{ id: "pairs", hands: RANKS.map((rank) => rank + rank) }];
+    ["s", "o"].forEach((suffix) => {
+      // Ax is excluded from fixed-high monotonicity because wheel-ace blocker
+      // candidates intentionally do not follow kicker strength alone.
+      for (let highIndex = 1; highIndex < RANKS.length - 1; highIndex += 1) {
+        const high = RANKS[highIndex];
+        const hands = [];
+        for (let lowIndex = highIndex + 1; lowIndex < RANKS.length; lowIndex += 1) {
+          hands.push(high + RANKS[lowIndex] + suffix);
+        }
+        families.push({ id: high + "x" + suffix, hands });
+      }
+      [0, 1].forEach((gap) => {
+        const hands = [];
+        for (let highIndex = 0; highIndex + gap + 1 < RANKS.length; highIndex += 1) {
+          hands.push(RANKS[highIndex] + RANKS[highIndex + gap + 1] + suffix);
+        }
+        families.push({ id: (gap === 0 ? "connectors" : "one-gappers") + "-" + suffix, hands });
+      });
+    });
+    return families.filter((family) => family.hands.length > 1);
+  }
+
+  function findFamilyInversions(args, contextLabel) {
+    const errors = [];
+    buildIntegrityFamilies().forEach((family) => {
+      let strongerFold = null;
+      family.hands.forEach((hand) => {
+        const recommendation = recommendCore({ ...args, hand });
+        const continues = recommendation.allowedActions.some((action) => action !== ACTIONS.FOLD);
+        if (!continues && !strongerFold) {
+          strongerFold = hand;
+        } else if (continues && strongerFold) {
+          errors.push(
+            contextLabel + " inverts " + family.id + ": " + strongerFold + " folds while weaker " + hand + " continues"
+          );
+        }
+      });
+    });
+    return errors;
+  }
+
+  function validateCorpusProvenance(errors) {
+    const metadata = CORPUS_METADATA;
+    const provenance = metadata.provenance || {};
+    if (metadata.status === "provisional") {
+      if (metadata.reviewStatus !== "not-independently-solver-or-expert-reviewed" ||
+          provenance.solverConfiguration !== null ||
+          provenance.solverOutputHash !== null ||
+          provenance.independentExpertReview !== null) {
+        errors.push("Provisional corpus metadata must not imply solver or expert review evidence");
+      }
+      return;
+    }
+    if (metadata.status === "solver-reviewed") {
+      if (!provenance.solverConfiguration || typeof provenance.solverOutputHash !== "string" ||
+          provenance.solverOutputHash.length < 16) {
+        errors.push("Solver-reviewed corpus requires a configuration and output hash");
+      }
+      return;
+    }
+    if (metadata.status === "expert-reviewed") {
+      const review = provenance.independentExpertReview;
+      if (!review || typeof review.reviewer !== "string" || typeof review.version !== "string" ||
+          typeof review.date !== "string") {
+        errors.push("Expert-reviewed corpus requires structured reviewer, version, and date evidence");
+      }
+      return;
+    }
+    errors.push("Unknown corpus review status: " + metadata.status);
+  }
+
+  function validateRecommendationShape(recommendation, label, errors) {
+    const validActions = new Set(Object.values(ACTIONS));
+    if (!recommendation || !validActions.has(recommendation.primaryAction)) {
+      errors.push(label + " has an invalid primary action");
+      return;
+    }
+    if (!Array.isArray(recommendation.allowedActions) || !recommendation.allowedActions.length ||
+        !recommendation.allowedActions.includes(recommendation.primaryAction) ||
+        recommendation.allowedActions.some((action) => !validActions.has(action))) {
+      errors.push(label + " has malformed allowed actions");
+    }
+    if (!recommendation.strategyRuleId) {
+      errors.push(label + " has no strategy rule id");
+    }
+  }
+
+  function validateCorpusCoverage(presetId, errors) {
+    const preset = RANGE_PRESETS[presetId];
+    const expectedSpots = getValidVsOpenSpots();
+    const expectedKeys = new Set(expectedSpots.map((spot) => spot.key));
+    const mappedKeys = Object.keys(preset.vsOpen.spotTemplates);
+    mappedKeys.forEach((key) => {
+      if (!expectedKeys.has(key)) {
+        errors.push("Facing-open mapping contains unsupported spot " + key);
+      }
+    });
+    expectedKeys.forEach((key) => {
+      if (!preset.vsOpen.spotTemplates[key]) {
+        errors.push("Facing-open mapping is missing required spot " + key);
+      }
+    });
+
+    const reachableTemplates = new Set(Object.values(preset.vsOpen.spotTemplates));
+    Object.keys(preset.vsOpen.templates).forEach((templateId) => {
+      if (!reachableTemplates.has(templateId)) {
+        errors.push("Facing-open template is unreachable: " + templateId);
+      }
+    });
+
+    HERO_BASELINES.forEach(({ id: heroBaseline }) => {
+      const rows = preset.rfi[heroBaseline];
+      if (!rows) {
+        errors.push("Missing Hero baseline table " + heroBaseline);
+        return;
+      }
+      RFI_POSITIONS.forEach((position) => {
+        const row = rows[position];
+        if (!row || !parseRangeList(row.open).size) {
+          errors.push("Missing or empty RFI range for " + heroBaseline + " " + position);
+          return;
+        }
+        let openCount = 0;
+        let foldCount = 0;
+        ALL_HAND_CLASSES.forEach((hand) => {
+          const recommendation = recommendCore({ mode: MODES.RFI, heroBaseline, position, hand, presetId });
+          validateRecommendationShape(recommendation, "RFI " + heroBaseline + " " + position + " " + hand, errors);
+          if (recommendation.primaryAction === ACTIONS.FOLD) foldCount += 1;
+          else openCount += 1;
+        });
+        if (!openCount || !foldCount) {
+          errors.push("RFI " + heroBaseline + " " + position + " must contain both opens and folds");
+        }
+      });
+    });
+
+    OPENER_PROFILES.forEach(({ id: openerProfile }) => {
+      OPEN_SIZE_CLASSES.forEach(({ id: openSize }) => {
+        expectedSpots.forEach((spot) => {
+          let continueCount = 0;
+          let foldCount = 0;
+          ALL_HAND_CLASSES.forEach((hand) => {
+            const recommendation = recommendCore({
+              mode: MODES.VS_OPEN,
+              openerPosition: spot.openerPosition,
+              heroPosition: spot.heroPosition,
+              openerProfile,
+              openSize,
+              hand,
+              presetId
+            });
+            validateRecommendationShape(
+              recommendation,
+              "VS_OPEN " + spot.key + " " + openerProfile + " " + openSize + " " + hand,
+              errors
+            );
+            if (recommendation.allowedActions.some((action) => action !== ACTIONS.FOLD)) continueCount += 1;
+            else foldCount += 1;
+          });
+          if (!continueCount || !foldCount) {
+            errors.push("VS_OPEN " + spot.key + " " + openerProfile + " " + openSize + " must contain continues and folds");
+          }
+        });
+      });
+    });
+  }
+
+  function validateExplicitAdjustments(presetId, errors) {
+    const preset = RANGE_PRESETS[presetId];
+    const validProfiles = new Set(OPENER_PROFILES.map((item) => item.id));
+    const validSizes = new Set(OPEN_SIZE_CLASSES.map((item) => item.id));
+    const validActions = new Set(Object.values(ACTIONS));
+    const ids = new Set();
+    const scopes = new Set();
+
+    EXPLICIT_VS_OPEN_ADJUSTMENTS.forEach((rule) => {
+      if (!rule.id || ids.has(rule.id)) errors.push("Explicit adjustment has a missing or duplicate id: " + (rule.id || "unnamed"));
+      ids.add(rule.id);
+      if (!rule.templateIds.length || !rule.profiles.length || !rule.sizes.length || !parseRangeList(rule.hands).size) {
+        errors.push("Explicit adjustment is missing deterministic scope: " + (rule.id || "unnamed"));
+      }
+      rule.templateIds.forEach((templateId) => {
+        if (!preset.vsOpen.templates[templateId]) errors.push(rule.id + " references unknown template " + templateId);
+      });
+      rule.profiles.forEach((profile) => {
+        if (!validProfiles.has(profile)) errors.push(rule.id + " references unknown profile " + profile);
+      });
+      rule.sizes.forEach((size) => {
+        if (!validSizes.has(size)) errors.push(rule.id + " references unknown size " + size);
+      });
+      const recommendation = rule.recommendation || {};
+      if (!validActions.has(recommendation.primaryAction) || !Array.isArray(recommendation.allowedActions) ||
+          !recommendation.allowedActions.includes(recommendation.primaryAction) ||
+          recommendation.allowedActions.some((action) => !validActions.has(action))) {
+        errors.push(rule.id + " has malformed recommendation actions");
+      }
+      rule.templateIds.forEach((templateId) => rule.profiles.forEach((profile) => rule.sizes.forEach((size) => {
+        parseRangeList(rule.hands).forEach((hand) => {
+          const scope = [templateId, profile, size, hand].join(":");
+          if (scopes.has(scope)) errors.push("Explicit adjustments overlap at " + scope);
+          scopes.add(scope);
+        });
+      })));
+    });
+  }
+
+  function validateStrategyIntegrity(presetId) {
+    const id = normalizePresetId(presetId);
+    const errors = validatePureActionRanges(id);
+    const noOpControls = [];
+
+    validateCorpusProvenance(errors);
+    validateExplicitAdjustments(id, errors);
+    validateCorpusCoverage(id, errors);
+    const fingerprint = getCorpusFingerprint(id);
+    if (EXPECTED_ACTION_FINGERPRINT === "PENDING" || fingerprint !== EXPECTED_ACTION_FINGERPRINT) {
+      errors.push("Corpus action fingerprint changed: expected " + EXPECTED_ACTION_FINGERPRINT + ", received " + fingerprint);
+    }
+
+    HERO_BASELINES.forEach(({ id: heroBaseline }) => {
+      RFI_POSITIONS.forEach((position) => {
+        errors.push(...findFamilyInversions(
+          { mode: MODES.RFI, position, heroBaseline, presetId: id },
+          "RFI " + position + " Hero " + heroBaseline
+        ));
+      });
+    });
+
+    OPENER_PROFILES.forEach(({ id: openerProfile }) => {
+      OPEN_SIZE_CLASSES.forEach(({ id: openSize }) => {
+        getValidVsOpenSpots().forEach((spot) => {
+          const args = {
+            mode: MODES.VS_OPEN,
+            openerPosition: spot.openerPosition,
+            heroPosition: spot.heroPosition,
+            openerProfile,
+            openSize,
+            presetId: id
+          };
+          errors.push(...findFamilyInversions(args, "VS_OPEN " + spot.key + " " + openerProfile + " " + openSize));
+        });
+      });
+    });
+
+    getValidVsOpenSpots().forEach((spot) => {
+      const sensitivity = getStrategySensitivity({
+        mode: MODES.VS_OPEN,
+        openerPosition: spot.openerPosition,
+        heroPosition: spot.heroPosition,
+        openerProfile: DEFAULT_PROFILE,
+        openSize: DEFAULT_SIZE,
+        presetId: id
+      });
+      ["openerProfile", "openSize"].forEach((dimension) => {
+        const detail = sensitivity.dimensions[dimension];
+        if (!detail.operational) {
+          noOpControls.push({
+            mode: MODES.VS_OPEN,
+            context: spot.key,
+            dimension,
+            disclosure: detail.disclosure
+          });
+        }
+      });
+    });
+
+    return {
+      ok: errors.length === 0,
+      corpus: getCorpusMetadata(id),
+      errors,
+      noOpControls,
+      summary: {
+        handClasses: ALL_HAND_CLASSES.length,
+        rfiContexts: RFI_POSITIONS.length,
+        vsOpenContexts: getValidVsOpenSpots().length,
+        explicitAdjustmentRules: EXPLICIT_VS_OPEN_ADJUSTMENTS.length,
+        disclosedNoOpControls: noOpControls.length
+      }
+    };
   }
 
   function parseRangeList(text) {
@@ -1392,7 +2211,10 @@
     ACTIONS,
     ACTION_LABELS,
     ALL_HAND_CLASSES,
+    CORPUS_METADATA,
+    DEFAULT_HERO_BASELINE,
     DEFAULT_PRESET_ID,
+    HERO_BASELINES,
     MODES,
     OPEN_SIZE_CLASSES,
     OPENER_PROFILES,
@@ -1405,18 +2227,29 @@
     displayAction,
     getAssumptionLabel,
     getChartCellRecommendation,
+    getConceptTags,
+    getCorpusActionSnapshot,
+    getCorpusFingerprint,
+    getCorpusMetadata,
+    getNearestContrast,
     getRecommendationGroups,
+    getStrategySensitivity,
+    getStructuredCoachingFacts,
     getValidHeroPositions,
     getValidVsOpenSpots,
+    getVillainProfileDefinition,
     gradeRecommendation,
     gradeThreeBetDecision,
+    heroBaselineLabel,
     normalizeHand,
+    normalizeHeroBaseline,
     parseRangeList,
     positionLabel,
     profileLabel,
     recommend,
     sizeLabel,
     spotKey,
-    validatePureActionRanges
+    validatePureActionRanges,
+    validateStrategyIntegrity
   };
 });

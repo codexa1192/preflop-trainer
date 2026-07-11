@@ -33,26 +33,52 @@ facing-3-bet drill is intentionally withheld: useful fold/call/4-bet training
 requires hero and villain positions, open and 3-bet sizes, and a documented
 call range.
 
-The included live ranges are training defaults. Regression tests enforce
-internal consistency, but they are not a substitute for an independently
-reviewed solver or expert-approved strategy corpus.
+The included strategy corpus is a **provisional live baseline**. Regression
+tests enforce internal consistency and catch non-monotonic range artifacts,
+but they are not a substitute for an independently reviewed solver or
+expert-approved corpus. The UI keeps that status visible and binds local
+mastery to the corpus fingerprint so a strategy update cannot silently reuse
+stale mastery.
 
-Challenge mode targets explicit mixed hands and one-step range boundaries for
-95% of its cold-start questions, while retaining a 5% stable-core review
-share. A reasonable secondary action is accepted but does not count as full
-default-action mastery. A single hand is capped at 8% of a cold-start context
-and 18% after weak-spot adaptation, preventing one boundary hand from taking
-over a session.
+The default study loop is a focused 20-decision session designed to take about
+10 minutes when explanations are read. It prioritizes due relearning, exact
+mistakes, semantic poker boundaries, combination frequency, and under-practiced
+concepts. A miss is scheduled again after roughly 8 questions, 32 questions,
+and on a later day. Stable invariant premiums are retired aggressively instead
+of consuming a fixed answer-category quota. A reasonable secondary action is
+accepted, but it does not count as full default-action mastery.
 
-Stats use the v3 local schema. Earlier results are left untouched under the v2
-key but are not imported because the old format cannot distinguish a preferred
-answer from a reasonable secondary action or remove the retired generic
-facing-3-bet questions safely.
+Stats use the v4 local schema and record the chosen action, response latency,
+timestamp, lapses, exact question/context, concept, due state, and strategy
+fingerprint. The compact practice-priority dashboard reports exact recurring
+wrong actions and sample size and can start a ten-question targeted drill. That
+length is deliberate: even a miss on the first targeted decision can reach its
+first spaced recheck before the drill ends.
+It deliberately labels ranking as practice priority rather than dollars or BB
+saved because the provisional corpus does not contain reviewed EV regret.
+Earlier stats remain untouched under their prior storage keys and are not
+silently imported into the new mastery model.
+
+Hero's first-in baseline is separate from the Villain opening model. The
+settings expose exact opener-to-Hero spots, and the Villain definition reports
+a position-specific combination range instead of treating “tight” or “loose”
+as self-explanatory. Feedback shows only counterfactuals actually queried from
+the corpus; generic “change when” claims are omitted when no supported control
+changes the recommendation.
+
+Before treating the baseline as room-specific, use the
+[Poto calibration checklist](docs/POTO_CALIBRATION.md). The ranking objective
+and its current evidence limits are documented in
+[Training objective](docs/TRAINING_OBJECTIVE.md). Corpus behavior changes are
+recorded in the [strategy changelog](docs/STRATEGY_CHANGELOG.md), and UI work
+follows the [rendered visual standard](docs/AI_VISUAL_STANDARD.md).
 
 ```bash
 node --check app.js
 node --check trainer-scheduler.js
 node --check range-engine.js
 node scripts/validate-ranges.js
+node scripts/strategy-integrity.js
+node scripts/simulate-learning.js
 node scripts/smoke-app.js
 ```

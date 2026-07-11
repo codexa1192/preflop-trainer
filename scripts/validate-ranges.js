@@ -143,6 +143,32 @@ assert(
   "77 UTG Balanced RFI is at least reasonable/open"
 );
 
+const rfi77VillainTightOnly = engine.recommend({
+  mode: engine.MODES.RFI,
+  position: "UTG",
+  hand: "77",
+  openerProfile: "TIGHT"
+});
+const rfi77HeroTight = engine.recommend({
+  mode: engine.MODES.RFI,
+  position: "UTG",
+  hand: "77",
+  heroBaseline: "TIGHT"
+});
+assert(
+  rfi77VillainTightOnly.primaryAction === rfi77Utg.primaryAction &&
+    rfi77HeroTight.primaryAction === engine.ACTIONS.FOLD,
+  "Villain profile never silently rewrites Hero RFI while explicit Hero baseline remains operational"
+);
+
+const integrity = engine.validateStrategyIntegrity();
+assert(
+  integrity.ok && integrity.summary.vsOpenContexts === 35 &&
+    Object.isFrozen(engine.RANGE_PRESETS) &&
+    /^fnv1a32:[0-9a-f]{8}$/.test(engine.getCorpusFingerprint()),
+  "Strategy corpus is complete, deeply immutable, and behavior-fingerprinted"
+);
+
 [
   ["55", "CO"],
   ["66", "UTG"],
@@ -315,10 +341,11 @@ assert(
 );
 
 assert(
-  scheduler.neighboringHands("AA").length === 2 &&
-    scheduler.neighboringHands("76s").length === 4 &&
-    !scheduler.neighboringHands("76s").includes("65s"),
-  "Boundary detection uses cardinal matrix neighbors rather than diagonal shortcuts"
+  scheduler.semanticNeighboringHands("AA").every((hand) => scheduler.handFamily(hand) === "pair") &&
+    scheduler.semanticNeighboringHands("76s").includes("65s") &&
+    scheduler.semanticNeighboringHands("76s").every((hand) => scheduler.handFamily(hand) === "suited") &&
+    scheduler.semanticNeighboringHands("98o").every((hand) => scheduler.handFamily(hand) === "offsuit"),
+  "Boundary detection uses poker-semantic neighbors without crossing pair, suited, and offsuit families"
 );
 
 function optimizedRows(args) {
@@ -329,13 +356,10 @@ function optimizedRows(args) {
 }
 
 function challengeOptions(args) {
-  const isRfi = args.mode === engine.MODES.RFI;
   return scheduler.buildChallengeOptions(optimizedRows(args), {
-    actionWeights: isRfi
-      ? { [engine.ACTIONS.OPEN]: 0.55, [engine.ACTIONS.FOLD]: 0.45 }
-      : { [engine.ACTIONS.THREE_BET]: 0.3, [engine.ACTIONS.CALL]: 0.35, [engine.ACTIONS.FOLD]: 0.35 },
-    coreShare: 0.05,
-    excludeHands: ["AA", "KK"],
+    actionWeights: {},
+    coreShare: 0.08,
+    excludeHands: ["AA", "KK", "QQ", "AKs", "AKo"],
     maxSharePerHand: 0.08
   });
 }
@@ -345,10 +369,11 @@ function checkChallengeDistribution(args) {
   const options = challengeOptions(args);
   const total = options.reduce((sum, option) => sum + option.weight, 0);
   const core = options.filter((option) => option.tier === "CORE").reduce((sum, option) => sum + option.weight, 0);
-  const fold = options.filter((option) => option.action === engine.ACTIONS.FOLD).reduce((sum, option) => sum + option.weight, 0);
   const maxHand = Math.max(...options.map((option) => option.weight));
-  if (Math.abs(total - 1) > 1e-9 || Math.abs(core - 0.05) > 1e-9 ||
-      fold > 0.5 || maxHand > 0.0800001 || new Set(options.map((option) => option.hand)).size !== options.length) {
+  const hands = new Set(options.map((option) => option.hand));
+  if (Math.abs(total - 1) > 1e-9 || core + 1e-9 < 0.08 ||
+      maxHand > 0.0800001 || hands.size !== options.length ||
+      ["AA", "KK", "QQ", "AKs", "AKo"].some((hand) => hands.has(hand))) {
     challengeDistributionFailures += 1;
   }
 }
@@ -372,7 +397,7 @@ engine.OPENER_PROFILES.forEach(({ id: openerProfile }) => {
 });
 assert(
   challengeDistributionFailures === 0,
-  "Every active context keeps 95% challenge mass, 5% stable-core mass, balanced fold defaults, and an 8% per-hand cap"
+  "Every active context keeps semantic challenge mass, 8% stable-core review, no autopilot premiums, and an 8% per-hand cap"
 );
 
 const adversarialAdaptiveOptions = challengeOptions({
@@ -384,18 +409,18 @@ const adversarialAdaptiveOptions = challengeOptions({
 }).map((option) => ({
   ...option,
   weight: option.weight * scheduler.scoreHandOption({
-    record: option.hand === "AKs"
+    record: option.hand === "AQo"
       ? { total: 6, correct: 0, preferred: 0, lastSeen: 1, lastMissedAt: 6, correctStreak: 0, preferredStreak: 0 }
-      : { total: 6, correct: 6, preferred: 6, lastSeen: 5, lastMissedAt: 0, correctStreak: 6, preferredStreak: 6 },
+      : { total: 6, correct: 6, preferred: 6, lastSeen: 5, lastMissedAt: 0, correctStreak: 6, preferredStreak: 6, fluentPreferredStreak: 6, dueAt: Date.now() + 86400000 },
     sequence: 20
   })
 }));
 const cappedAdaptiveOptions = scheduler.capWeightedOptions(adversarialAdaptiveOptions, 0.18);
 const adaptiveMax = Math.max(...cappedAdaptiveOptions.map((option) => option.weight));
-const adaptiveAk = cappedAdaptiveOptions.find((option) => option.hand === "AKs");
+const adaptiveAqo = cappedAdaptiveOptions.find((option) => option.hand === "AQo");
 assert(
   Math.abs(cappedAdaptiveOptions.reduce((sum, option) => sum + option.weight, 0) - 1) < 1e-9 &&
-    adaptiveMax <= 0.1800001 && adaptiveAk && adaptiveAk.weight > 0.08,
+    adaptiveMax <= 0.1800001 && adaptiveAqo && adaptiveAqo.weight > 0.08,
   "Weak spots get extra adaptive practice without any one hand exceeding an 18% next-draw cap"
 );
 
@@ -796,8 +821,8 @@ const rehabilitatedWeight = scheduler.scoreHandOption({
 });
 const unseenWeight = scheduler.scoreHandOption({ sequence: rehabilitatedPractice.sequence });
 assert(
-  rehabilitatedWeight < unseenWeight,
-  "A historical miss is rehabilitated after a sustained preferred-action streak"
+  rehabilitatedPractice.relearningQueue.length === 1 && rehabilitatedWeight >= unseenWeight * 0.5,
+  "Massed preferred answers cannot erase a historical miss before spaced reviews"
 );
 
 const adaptiveStats = scheduler.ensureAdaptiveStats({
@@ -879,9 +904,13 @@ assert(
 
 [
   "drillSamplingGrid",
-  "openerToggleGrid",
+  "heroBaselineGrid",
+  "villainProfileGrid",
+  "vsSpotToggleGrid",
   "decisionMixNote",
-  "vsOpenStatsList",
+  "leakList",
+  "dueValue",
+  "sessionProgressText",
   "coachReasonLine",
   "coachCorrectionLine",
   "coachAdjustmentLine",
@@ -907,10 +936,12 @@ assert(
 );
 
 assert(
-  appJs.includes('stats: "poto_preflop_trainer_stats_v3"') &&
-    !appJs.includes('stats: "poto_preflop_trainer_stats_v2"') &&
+  appJs.includes('stats: "poto_preflop_trainer_stats_v4"') &&
+    appJs.includes("strategyFingerprint: STRATEGY_FINGERPRINT") &&
+    appJs.includes("responseLatencyMs") &&
+    appJs.includes("chosenAction") &&
     !appJs.includes("MODES.THREE_BET + key.slice"),
-  "Stats use a clean v3 schema instead of misclassifying legacy alternatives or retired-mode totals"
+  "Stats use a fingerprinted v4 schema with latency and chosen-action evidence"
 );
 
 assert(
@@ -952,10 +983,12 @@ assert(
 
 assert(
   appJs.includes("function statsContextKeyForArgs(args)") &&
-    appJs.includes('base + ":" + settings.openerProfile + ":" + settings.openSize') &&
-    appJs.includes('formatPercent(bucket.preferred, bucket.total) + " default') &&
-    indexHtml.includes("Default / strategy"),
-  "Context adaptation and visible stats are scoped to the selected profile and size"
+    appJs.includes('(args.heroBaseline || settings.heroBaseline)') &&
+    appJs.includes('(args.openerProfile || settings.villainProfile)') &&
+    appJs.includes('(args.openSize || settings.openSize)') &&
+    appJs.includes("strategy fingerprint") &&
+    indexHtml.includes("Practice priority"),
+  "Context adaptation and actionable stats are scoped to Hero baseline, Villain model, size, and strategy fingerprint"
 );
 
 assert(
@@ -978,7 +1011,7 @@ assert(
 
 assert(
   appJs.includes("Full deck review (169)") &&
-    appJs.includes("Challenge mode (range edges)") &&
+    appJs.includes("Focused high-value review") &&
     !appJs.includes("Uniform (169)") &&
     appJs.includes("return drawAdaptiveHand(args, engine.ALL_HAND_CLASSES)") &&
     appJs.includes("function isAdaptiveDrill()") &&
@@ -987,9 +1020,10 @@ assert(
 );
 
 assert(
-  appJs.includes('AUTOPILOT_VALUE_HANDS = new Set(["AA", "KK"])') &&
+  appJs.includes('AUTOPILOT_VALUE_HANDS = new Set(["AA", "KK", "QQ", "AKs", "AKo"])') &&
     appJs.includes("scheduler.buildChallengeOptions(rows") &&
-    appJs.includes("coreShare: 0.05") &&
+    appJs.includes("actionWeights: {}") &&
+    appJs.includes("coreShare: 0.08") &&
     appJs.includes("maxSharePerHand: 0.08") &&
     appJs.slice(
       appJs.indexOf("function drawAdaptiveChallengeHand"),
@@ -998,7 +1032,7 @@ assert(
     !appJs.includes(".slice(0, 55)") &&
     !appJs.includes(".slice(0, 75)") &&
     !appJs.includes(".slice(0, 85)"),
-  "Challenge sampling balances default actions, caps single-hand exposure, and keeps a small stable-core review share"
+  "Challenge sampling removes autopilot premiums, avoids forced action quotas, caps exposure, and keeps stable-core review"
 );
 
 assert(
@@ -1033,9 +1067,9 @@ assert(
 );
 
 assert(
-  indexHtml.includes("./range-engine.js?v=20260710-suited-coach") &&
-    indexHtml.includes("./trainer-scheduler.js?v=20260710-suited-coach") &&
-    indexHtml.includes("./app.js?v=20260710-suited-coach") &&
+  indexHtml.includes("./range-engine.js?v=20260710-high-ev-v4") &&
+    indexHtml.includes("./trainer-scheduler.js?v=20260710-high-ev-v4") &&
+    indexHtml.includes("./app.js?v=20260710-high-ev-v4") &&
     !indexHtml.includes('<script src="./app.js"></script>') &&
     !indexHtml.includes('<script src="./range-engine.js"></script>') &&
     !indexHtml.includes('<script src="./trainer-scheduler.js"></script>'),
