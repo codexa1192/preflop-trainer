@@ -1015,8 +1015,8 @@ a:focus-visible,
     </header>
 
     <aside id="strategyStatusBanner" class="strategy-status" aria-live="polite">
-      <strong id="strategyStatusTitle">Provisional live baseline</strong>
-      <span id="strategyStatusCopy">Internally checked training ranges; not yet independently solver- or expert-reviewed. <a href="./docs/POTO_CALIBRATION.md">Poto assumptions</a></span>
+      <strong id="strategyStatusTitle">Poto room profile · provisional strategy</strong>
+      <span id="strategyStatusCopy">You report 9-handed; PokerAtlas lists 9 players and 10% rake up to $6. Hand-authored 100bb actions are not solver- or expert-reviewed and do not incorporate rake/drop. <a href="./docs/POTO_CALIBRATION.md">Poto assumptions</a></span>
     </aside>
 
     <section class="quiz-card">
@@ -1030,7 +1030,7 @@ a:focus-visible,
 
       <div id="questionPanel" role="group" tabindex="-1" aria-labelledby="spotLine handLine" aria-describedby="assumptionLine samplingLine">
         <p id="spotLine" class="spot-line">Preflop Decision</p>
-        <p id="assumptionLine" class="assumption-line">Live $1/$3 Default · 9-handed · 100-133bb · no ante</p>
+        <p id="assumptionLine" class="assumption-line">Poto $1/$3 · 9-handed · 100bb training assumption · unstraddled</p>
         <p id="samplingLine" class="sampling-line hidden">Focused high-value review</p>
         <p id="handLine" class="hand-line">AKo</p>
         <p class="prompt">Choose the default action</p>
@@ -1058,7 +1058,7 @@ a:focus-visible,
             <p id="coachRangePlanLine" class="coach-copy"></p>
           </div>
           <div id="coachAdjustmentRow" class="coach-row hidden">
-            <span class="coach-label">Verified switch</span>
+            <span class="coach-label">Corpus switch</span>
             <p id="coachAdjustmentLine" class="coach-copy"></p>
           </div>
           <div class="coach-row">
@@ -1127,6 +1127,12 @@ a:focus-visible,
       <p class="modal-copy">Choose the exact situations to study. The fixed Hero baseline and Villain model are separate; these provisional ranges are not universal answers.</p>
 
       <div class="setting-block">
+        <h3>Poto room evidence</h3>
+        <p id="roomEvidenceLine" class="setting-note">You report 9-handed; PokerAtlas lists 9 players and 10% rake up to $6. Desk verification remains pending.</p>
+        <p id="roomDropEvidenceLine" class="setting-note">The current promotional drop and procedural details remain uncertain.</p>
+      </div>
+
+      <div class="setting-block">
         <h3>Hero first-in baseline</h3>
         <p class="setting-note">Controls only Hero's first-in strategy.</p>
         <div id="heroBaselineGrid" class="radio-stack"></div>
@@ -1162,11 +1168,11 @@ a:focus-visible,
       </div>
 
       <div class="setting-block">
-        <h3>Decision mix</h3>
+        <h3>Curriculum emphasis</h3>
         <div id="decisionMixNote" class="radio-stack"></div>
       </div>
 
-      <p class="setting-note"><strong>Provisional live baseline.</strong> Verify the room structure before treating it as Poto-specific. <a href="./docs/POTO_CALIBRATION.md">View the calibration checklist.</a></p>
+      <p class="setting-note"><strong>Provisional strategy.</strong> Room facts and strategy evidence are separate: corroborating rake does not make these actions rake-solved. <a href="./docs/POTO_CALIBRATION.md">View the calibration contract.</a></p>
 
       <button id="quickLiveDefaultsBtn" class="next-btn" type="button">Quick Live Defaults</button>
       <button id="resetStatsBtn" class="reset-btn" type="button">Reset Stats</button>
@@ -1222,8 +1228,9 @@ a:focus-visible,
     </div>
   </div>
 
-<script src="./range-engine.js?v=20260710-high-ev-v4"></script>
-<script src="./trainer-scheduler.js?v=20260710-high-ev-v4"></script>
-<script src="./app.js?v=20260710-high-ev-v4"></script>
+<script src="./poto-evidence.js?v=20260712-poto-calibration-v5"></script>
+<script src="./range-engine.js?v=20260712-poto-calibration-v5"></script>
+<script src="./trainer-scheduler.js?v=20260712-poto-calibration-v5"></script>
+<script src="./app.js?v=20260712-poto-calibration-v5"></script>
 </body>
 </html>

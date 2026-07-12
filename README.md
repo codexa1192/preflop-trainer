@@ -7,6 +7,7 @@ Source layout
 -------------
 
 - `index.html` - static UI shell.
+- `poto-evidence.js` - immutable, sourced room profile and explicitly non-observed curriculum priors.
 - `range-engine.js` - single source of truth for live $1/$3 range presets, recommendation logic, grading, and chart output.
 - `trainer-scheduler.js` - adaptive weak-spot, decision-boundary, mastery, and recent-question cooldown scoring for drills.
 - `app.js` - browser UI controller for drills, settings, stats, and charts.
@@ -33,8 +34,13 @@ facing-3-bet drill is intentionally withheld: useful fold/call/4-bet training
 requires hero and villain positions, open and 3-bet sizes, and a documented
 call range.
 
-The included strategy corpus is a **provisional live baseline**. Regression
-tests enforce internal consistency and catch non-monotonic range artifacts,
+The included strategy corpus is a **provisional 100bb, unstraddled training
+baseline**. The app separately discloses the current Poto room evidence: the
+user reports nine-handed, PokerAtlas also lists nine players, and the user's
+10% rake capped at $6 recollection matches that listing. Desk verification is
+still pending and the current promotional-drop total remains uncertain. None
+of those room-cost reports are represented as solver inputs to the action matrix.
+Regression tests enforce internal consistency and catch non-monotonic range artifacts,
 but they are not a substitute for an independently reviewed solver or
 expert-approved corpus. The UI keeps that status visible and binds local
 mastery to the corpus fingerprint so a strategy update cannot silently reuse
@@ -59,6 +65,11 @@ saved because the provisional corpus does not contain reviewed EV regret.
 Earlier stats remain untouched under their prior storage keys and are not
 silently imported into the new mastery model.
 
+The 35% first-in / 65% facing-open selection is an explicit curriculum prior
+that spends more time on harder facing-open decisions. It is not labeled as
+Potawatomi opportunity frequency. Room-frequency and regret weights remain
+neutral until they have enough observed or reviewed evidence.
+
 Hero's first-in baseline is separate from the Villain opening model. The
 settings expose exact opener-to-Hero spots, and the Villain definition reports
 a position-specific combination range instead of treating “tight” or “loose”
@@ -75,6 +86,7 @@ follows the [rendered visual standard](docs/AI_VISUAL_STANDARD.md).
 
 ```bash
 node --check app.js
+node --check poto-evidence.js
 node --check trainer-scheduler.js
 node --check range-engine.js
 node scripts/validate-ranges.js

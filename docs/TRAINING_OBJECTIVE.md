@@ -16,6 +16,15 @@ priority = review_due
 When sourced action EVs are unavailable, `mistake_cost` must use explicit,
 coarse provisional bands rather than fabricated big-blind values.
 
+The active 35% first-in / 65% facing-open split is a curriculum prior chosen to
+emphasize more complex decisions. It is not a room-frequency estimate. Until
+anonymous context counts meet a predeclared context-level sample and
+uncertainty rule, and regret evidence is reviewed, both `real_spot_frequency`
+and `mistake_cost` must resolve to neutral weights. Context occurrence belongs
+in mode/context selection exactly once;
+putting the same context multiplier into a within-context hand draw adds no
+information and can create misleading EV language.
+
 ## Session contract
 
 - Default to a focused session of roughly ten minutes.

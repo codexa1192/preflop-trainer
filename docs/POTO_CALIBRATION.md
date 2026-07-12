@@ -2,26 +2,108 @@
 
 The trainer must separate three kinds of information:
 
-1. **Room fact** — a current rule confirmed by Potawatomi or at the poker desk.
-2. **Observed pool prior** — an anonymous frequency measured over several sessions.
-3. **Strategy evidence** — a solver configuration or independent expert review tied to an exact node.
+1. **Room evidence** — a current rule confirmed by Potawatomi, the owner, or a
+   named third-party listing, with its confidence shown.
+2. **Observed pool prior** — an anonymous frequency measured over several
+   sessions.
+3. **Strategy evidence** — a solver configuration or independent expert review
+   tied to an exact node.
 
-Do not promote an assumption from one category to another. In particular, a
-plausible live-poker heuristic is not solver evidence.
+Confirming a room rule does not prove that a hand recommendation incorporates
+that rule. A plausible live-poker heuristic is not solver evidence.
 
-## Current public baseline
+## Current room evidence
 
-As of 2026-07-10, Potawatomi's public poker page confirms an active Milwaukee
-poker room but does not publish the detailed cash-game rake or buy-in rules.
-PokerAtlas currently lists the $1/$3 game as nine-handed with a $100 minimum,
-$500 maximum, an optional UTG straddle, 10% rake capped at $6, and a jackpot
-drop. These third-party values must be verified at the desk before they are used
-as solver inputs.
+Evidence date: **2026-07-12**.
 
-- Potawatomi: <https://www.potawatomi.com/casino/poker>
-- PokerAtlas: <https://www.pokeratlas.com/poker-cash-game/potawatomi-casino-milwaukee-no-limit-holdem-1-3>
+| Item | Current evidence | Status in the trainer |
+| --- | --- | --- |
+| Table size | The user reports nine-handed; PokerAtlas also lists nine players | User-reported and third-party-listed default |
+| Base rake | The user's 10% capped at $6 recollection matches PokerAtlas | Third-party-listed; desk verification, increments, and no-flop treatment remain pending |
+| Promotional drop | Official rules describe a first promotional dollar once a qualifying Hold'em pot reaches $15; PokerAtlas lists `$1 on $15+` and `$2 on $30+` | Current amount is uncertain because the official poker page lists no current promotions and the Bad Beat page says that jackpot is suspended |
+| Buy-in | PokerAtlas lists $100-$500, about 33-167bb | Third-party-listed room range; not strategy coverage |
+| Straddle | PokerAtlas lists UTG only | Third-party-listed position; amount, frequency, and procedure unverified |
 
-## One-session anonymous observation sheet
+Sources:
+
+- Potawatomi poker room: <https://www.potawatomi.com/casino/poker>
+- Potawatomi poker house rules: <https://www.potawatomi.com/casino/house-rules>
+- Potawatomi Bad Beat Jackpot status: <https://www.potawatomi.com/casino/poker/bad-beat-jackpot>
+- PokerAtlas $1/$3 listing: <https://www.pokeratlas.com/poker-cash-game/potawatomi-casino-milwaukee-no-limit-holdem-1-3>
+
+## What the reported cost means
+
+The following is a hypothetical illustration, not production trainer logic or
+a statement of the exact collection procedure. It assumes simple continuous
+10% math and interprets PokerAtlas's `$2 on $30+` as **$2 total**, not an
+additional $2 after the first dollar:
+
+| Pot | Base rake | Listed drop | Illustrated total removed |
+| ---: | ---: | ---: | ---: |
+| $15 | $1.50 | $1 | $2.50 |
+| $30 | $3 | $2 | $5 |
+| $60 | $6 | $2 | $8 |
+
+If that interpretation and collection schedule are accurate, marginal
+small-pot calls face a substantial headwind, particularly from the small blind
+and against large opens. That supports skepticism toward passive marginal
+continues; it does **not** reveal exact hand thresholds. Actual rounding,
+no-flop-no-drop treatment, whether `$2` is total or additional, and current
+promotional collection still need desk confirmation.
+
+## Current strategy scope
+
+The active action matrix remains `poto-live-1-3-provisional-v4`:
+
+- nine-handed, unstraddled;
+- 100bb is a **training assumption**, not a verified effective-stack range;
+- standard and large open-size classes are qualitative, not exact sizes;
+- rake and promotional drop are disclosed but were not solver inputs;
+- no action EVs, numeric mixed frequencies, or reviewed regret bands exist;
+- the 35% first-in / 65% facing-open mix is curriculum emphasis, not observed
+  room frequency.
+
+The trainer must not call these answers GTO, solved, optimal, rake-adjusted, or
+expert-reviewed.
+
+## Solve and review gate
+
+Before a recommendation can be promoted from provisional, its exact node must
+include:
+
+- table size, blind structure, exact stack, ante, rake, drop, and straddle
+  state;
+- exact open, call, 3-bet, 4-bet, and all-in sizes available at that node;
+- Hero and Villain position-specific action ranges and numeric frequencies;
+- per-action EVs for boundary hands or a dated qualitative-regret review;
+- solver name/version, shared configuration, output hash, and convergence
+  evidence, or an independent reviewer's dated attestation;
+- sensitivity checks across relevant stack, open-size, and uncertain rake/drop
+  variants;
+- a corpus version and action fingerprint that invalidates stale mastery when
+  an answer changes.
+
+Because the stepwise promotional drop is not reproduced by a simple
+percentage-and-cap input, Poto work should use rake sensitivity bounds. A
+simplified preferred action should be published only when it remains stable
+across the relevant bounds; otherwise the trainer should label it mixed or
+withhold grading.
+
+## Current product priority
+
+The following order is a product choice based on structural adjacency to the
+active single-raised-pot trainer and on avoiding strategy transfer between
+different game trees. It is not claimed to be measured Poto spot frequency:
+
+1. Open plus one caller: fold, call, or squeeze from late position and blinds.
+2. Hero opens and faces a 3-bet: fold, call, or 4-bet with positions and sizes.
+3. One limper: fold, overlimp, or isolate after room frequency is observed.
+4. UTG-straddled hands after the amount and procedure are verified.
+5. Multiple limpers/callers only with explicit multiway-solver limitations.
+
+Do not map a single-raised-pot chart onto these different game trees.
+
+## Anonymous observation sheet
 
 Record counts only. Do not record player names, descriptions, seat identities,
 or private information.
@@ -36,21 +118,8 @@ or private information.
 | UTG straddle | on / off |
 | Table occupancy | 9 / 8 / 7 or fewer |
 
-After at least 200 observable opportunities, use the counts only to prioritize
-study frequency. Do not infer an opponent's exact range from a small sample.
-
-## Corpus acceptance checklist
-
-Every strategy configuration must state:
-
-- table size, blind structure, rake cap, drop, and straddle state;
-- exact effective stack and all action sizes;
-- Hero and Villain position-specific ranges;
-- fold/call/raise frequency for every trained hand class;
-- action EVs or reviewed qualitative regret bands;
-- solver name/version, configuration hash, and convergence tolerance, or the
-  independent reviewer's dated attestation;
-- corpus version and a fingerprint that invalidates stale mastery records.
-
-Until all fields exist, the UI must call the range a **provisional live
-baseline**, not GTO, solved, optimal, or verified.
+Treat 200 overall observable opportunities as a **provisional collection
+checkpoint**, not statistical sufficiency. Before any individual context can
+affect study frequency, predeclare a context-level sample and uncertainty rule.
+Until that rule is met, low-sample or unverified contexts must resolve to
+neutral weight rather than fake precision.
