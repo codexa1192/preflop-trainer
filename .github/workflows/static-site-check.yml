@@ -21,6 +21,7 @@ jobs:
           set -euo pipefail
           test -f index.html
           test -f app.js
+          test -f poto-evidence.js
           test -f trainer-scheduler.js
           test -f range-engine.js
           test -f scripts/validate-ranges.js
@@ -35,6 +36,7 @@ jobs:
           test -f docs/STRATEGY_CHANGELOG.md
           test -f .github/dependabot.yml
           node --check app.js
+          node --check poto-evidence.js
           node --check trainer-scheduler.js
           node --check range-engine.js
           node --check scripts/validate-ranges.js
@@ -45,7 +47,7 @@ jobs:
           node scripts/simulate-learning.js
           node scripts/validate-ranges.js
           node scripts/smoke-app.js
-          if grep -RIlE '(BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]+|xox[baprs]-[A-Za-z0-9-]+)' -- index.html app.js trainer-scheduler.js range-engine.js scripts/validate-ranges.js scripts/strategy-integrity.js scripts/simulate-learning.js scripts/smoke-app.js README.md SECURITY.md docs/AI_VISUAL_STANDARD.md docs/POTO_CALIBRATION.md docs/TRAINING_OBJECTIVE.md docs/STRATEGY_CHANGELOG.md .github/dependabot.yml >/tmp/public-sensitive-pattern-files; then
+          if grep -RIlE '(BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]+|xox[baprs]-[A-Za-z0-9-]+)' -- index.html app.js poto-evidence.js trainer-scheduler.js range-engine.js scripts/validate-ranges.js scripts/strategy-integrity.js scripts/simulate-learning.js scripts/smoke-app.js README.md SECURITY.md docs/AI_VISUAL_STANDARD.md docs/POTO_CALIBRATION.md docs/TRAINING_OBJECTIVE.md docs/STRATEGY_CHANGELOG.md .github/dependabot.yml >/tmp/public-sensitive-pattern-files; then
             printf 'Potential sensitive pattern found in public tracked files; remove it before merge.\n' >&2
             exit 1
           fi

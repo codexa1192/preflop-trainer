@@ -3,11 +3,15 @@
 
   const engine = window.PotoRangeEngine;
   const scheduler = window.PotoTrainerScheduler;
+  const evidence = window.PotoEvidence;
   const ACTIONS = engine.ACTIONS;
   const MODES = engine.MODES;
 
   if (!scheduler) {
     throw new Error("PotoTrainerScheduler failed to load.");
+  }
+  if (!evidence) {
+    throw new Error("PotoEvidence failed to load.");
   }
 
   const STORAGE_KEYS = {
@@ -44,10 +48,7 @@
     "CO>BTN", "CO>SB", "CO>BB", "BTN>SB", "BTN>BB"
   ]);
 
-  const DECISION_MIX = [
-    { id: MODES.RFI, label: "First in", weight: 0.35 },
-    { id: MODES.VS_OPEN, label: "Facing open", weight: 0.65 }
-  ];
+  const CURRICULUM_MIX = evidence.TRAINING_PRIORS.decisionModeMix.map((item) => ({ ...item }));
   const LIVE_OPEN_SIZE_CLASSES = engine.OPEN_SIZE_CLASSES.filter((item) => item.id !== "SMALL");
 
   let storageAvailable = true;
@@ -74,6 +75,8 @@
     heroBaselineGrid: document.getElementById("heroBaselineGrid"),
     villainProfileGrid: document.getElementById("villainProfileGrid"),
     profileDefinitionLine: document.getElementById("profileDefinitionLine"),
+    roomEvidenceLine: document.getElementById("roomEvidenceLine"),
+    roomDropEvidenceLine: document.getElementById("roomDropEvidenceLine"),
     openSizeGrid: document.getElementById("openSizeGrid"),
     rfiToggleGrid: document.getElementById("rfiToggleGrid"),
     drillSamplingGrid: document.getElementById("drillSamplingGrid"),
@@ -347,8 +350,16 @@
     buildSpotToggleGroup();
 
     buildSamplingGrid(el.drillSamplingGrid, "drillSamplingMode", settings.drillSamplingMode);
-    el.decisionMixNote.innerHTML = '<p class="setting-note">A focus session is 20 decisions. Due mistakes come first; remaining questions favor semantic range boundaries and under-practiced concepts. Facing-3-bet decisions stay withheld until positions, sizes, and call ranges are modeled.</p>';
+    el.decisionMixNote.innerHTML = '<p class="setting-note">A focus session is 20 decisions. Due mistakes come first; remaining questions favor semantic range boundaries and under-practiced concepts. The 35% first-in / 65% facing-open split is a curriculum emphasis, not measured Poto opportunity frequency. Facing-3-bet decisions stay withheld until positions, sizes, and call ranges are modeled.</p>';
+    renderRoomEvidence();
     renderProfileDefinition();
+  }
+
+  function renderRoomEvidence() {
+    if (!el.roomEvidenceLine || !el.roomDropEvidenceLine) return;
+    el.roomEvidenceLine.textContent = evidence.getRoomEvidenceSummary() +
+      " PokerAtlas's listed $100-$500 buy-in spans about 33-167bb; the graded strategy uses only a 100bb training assumption and excludes straddles.";
+    el.roomDropEvidenceLine.textContent = "PokerAtlas lists $1 on $15+ and $2 on $30+. Potawatomi's official poker page lists no current promotions and its Bad Beat page says that jackpot is suspended, so the current collection and meaning of $2 still need desk confirmation.";
   }
 
   function buildSpotToggleGroup() {
@@ -539,11 +550,12 @@
   }
 
   function renderStrategyStatus() {
-    const reviewed = STRATEGY_METADATA.status === "reviewed" || STRATEGY_METADATA.reviewStatus === "independently-reviewed";
-    el.strategyStatusTitle.textContent = reviewed ? "Reviewed strategy corpus" : "Provisional live baseline";
+    const reviewedStatuses = new Set(["reviewed", "solver-reviewed", "expert-reviewed"]);
+    const reviewed = reviewedStatuses.has(STRATEGY_METADATA.status) || STRATEGY_METADATA.reviewStatus === "independently-reviewed";
+    el.strategyStatusTitle.textContent = reviewed ? "Reviewed strategy corpus" : "Poto room profile · provisional strategy";
     el.strategyStatusCopy.textContent = reviewed
       ? "Version " + STRATEGY_VERSION + " · " + (STRATEGY_METADATA.assumptions || "See settings for assumptions.")
-      : "Internally checked training ranges; not independently solver- or expert-reviewed. Version " + STRATEGY_VERSION + ".";
+      : "You report 9-handed; PokerAtlas lists 9 players and 10% rake up to $6. Hand-authored 100bb actions are not solver- or expert-reviewed and do not incorporate rake/drop. Version " + STRATEGY_VERSION + ".";
     const link = document.createElement("a");
     link.href = "./docs/POTO_CALIBRATION.md";
     link.textContent = " Poto assumptions";
@@ -712,7 +724,7 @@
   function drawDecisionMode() {
     const signature = settings.enabledRfiPositions.join("|") + ":" + settings.enabledVsOpenSpots.join("|");
     if (isAdaptiveDrill()) {
-      const options = DECISION_MIX.map((item) => ({
+      const options = CURRICULUM_MIX.map((item) => ({
         id: item.id,
         weight: item.weight * scheduler.scoreBucket(modeStatsBucket(item.id), false)
       }));
@@ -1091,7 +1103,8 @@
       isPreferred: grade.isPreferred,
       responseLatencyMs,
       answeredAt,
-      strategyFingerprint: STRATEGY_FINGERPRINT
+      strategyFingerprint: STRATEGY_FINGERPRINT,
+      roomEvidenceVersion: evidence.EVIDENCE_VERSION
     });
     if (stats.answerLog.length > MAX_ANSWER_LOG) stats.answerLog.length = MAX_ANSWER_LOG;
 
@@ -1209,15 +1222,15 @@
     el.coachRangePlanLine.textContent = rangePlan;
     el.coachRangePlanRow.classList.remove("hidden");
 
-    const verified = Array.isArray(recommendation.counterfactuals) ? recommendation.counterfactuals[0] : null;
-    const verifiedText = verified
-      ? counterfactualLabel(verified) + " changes the corpus default to " + engine.displayAction(verified.primaryAction) + "."
+    const corpusSwitch = Array.isArray(recommendation.counterfactuals) ? recommendation.counterfactuals[0] : null;
+    const corpusSwitchText = corpusSwitch
+      ? counterfactualLabel(corpusSwitch) + " changes the provisional corpus default to " + engine.displayAction(corpusSwitch.primaryAction) + "."
       : "";
-    el.coachAdjustmentLine.textContent = verifiedText;
-    el.coachAdjustmentRow.classList.toggle("hidden", !verifiedText);
+    el.coachAdjustmentLine.textContent = corpusSwitchText;
+    el.coachAdjustmentRow.classList.toggle("hidden", !corpusSwitchText);
     const contrast = recommendation.facts && recommendation.facts.nearestContrast;
     el.coachTakeawayLine.textContent = contrast
-      ? contrast.hand + " is the nearest verified " + contrast.relationship + " contrast and defaults to " + engine.displayAction(contrast.primaryAction) + "."
+      ? contrast.hand + " is the nearest provisional-corpus " + contrast.relationship + " contrast and defaults to " + engine.displayAction(contrast.primaryAction) + "."
       : (coach.takeaway || "Use this only under the assumptions shown above.");
   }
 
@@ -1418,7 +1431,7 @@
     const counterfactual = Array.isArray(recommendation.counterfactuals) ? recommendation.counterfactuals[0] : null;
     const adjustment = document.createElement("p");
     adjustment.textContent = counterfactual
-      ? "Verified switch: " + counterfactualLabel(counterfactual) + " → " + engine.displayAction(counterfactual.primaryAction)
+      ? "Corpus switch: " + counterfactualLabel(counterfactual) + " → " + engine.displayAction(counterfactual.primaryAction)
       : "";
 
     const takeaway = document.createElement("p");

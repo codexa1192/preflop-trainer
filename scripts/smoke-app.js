@@ -175,7 +175,7 @@ const context = vm.createContext({
 context.window = context;
 context.globalThis = context;
 
-["range-engine.js", "trainer-scheduler.js", "app.js"].forEach((file) => {
+["poto-evidence.js", "range-engine.js", "trainer-scheduler.js", "app.js"].forEach((file) => {
   vm.runInContext(fs.readFileSync(path.join(rootDir, file), "utf8"), context, { filename: file });
 });
 
@@ -209,6 +209,7 @@ const savedV4 = JSON.parse(storage.get("poto_preflop_trainer_stats_v4"));
 assert.strictEqual(savedV4.schemaVersion, 4, "Stats persist under the v4 schema");
 assert(savedV4.strategyFingerprint, "Stats bind mastery to a strategy fingerprint");
 assert(savedV4.answerLog[0].chosenAction, "Answer history stores the learner's chosen action");
+assert.strictEqual(savedV4.answerLog[0].roomEvidenceVersion, "poto-room-evidence-2026-07-12", "Answer history records the room-evidence version without changing the strategy fingerprint");
 assert(savedV4.answerLog[0].conceptKey.includes(savedV4.answerLog[0].hand), "Concept mastery includes the exact hand instead of collapsing a whole suited/offsuit family");
 assert(Number.isFinite(savedV4.answerLog[0].responseLatencyMs), "Answer history stores response latency");
 assert(savedV4.answerLog[0].answeredAt > 0, "Answer history stores an answer timestamp");
@@ -216,6 +217,8 @@ assert(savedV4.byLeak[savedV4.answerLog[0].questionKey], "Exact question records
 assert(!elements.get("whyLine").classList.contains("hidden"), "Answering shows coaching immediately");
 assert(elements.get("coachReasonLine").textContent, "Coach reason is populated");
 assert(elements.get("coachTakeawayLine").textContent, "Coach takeaway is populated");
+assert(/recollection matches its current listing/i.test(elements.get("roomEvidenceLine").textContent), "Settings distinguish the user's rake recollection from the third-party listing");
+assert(/meaning of \$2 still need desk confirmation/i.test(elements.get("roomDropEvidenceLine").textContent), "Settings preserve current promotional-drop uncertainty without false-precision math");
 assert(!elements.get("nextBtn").classList.contains("hidden"), "Answering exposes the next-hand action");
 const answerDetail = elements.get("detailLine").textContent;
 const answerMatch = answerDetail.match(/^You chose ([A-Z0-9-]+) · Default ([A-Z0-9-]+)/);

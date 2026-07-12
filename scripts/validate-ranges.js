@@ -5,6 +5,7 @@ const fs = require("fs");
 const path = require("path");
 const engine = require("../range-engine.js");
 const scheduler = require("../trainer-scheduler.js");
+const evidence = require("../poto-evidence.js");
 
 let failures = 0;
 
@@ -69,6 +70,78 @@ const indexHtml = fs.readFileSync(path.join(rootDir, "index.html"), "utf8");
 const appJs = fs.readFileSync(path.join(rootDir, "app.js"), "utf8");
 const engineJs = fs.readFileSync(path.join(rootDir, "range-engine.js"), "utf8");
 const schedulerJs = fs.readFileSync(path.join(rootDir, "trainer-scheduler.js"), "utf8");
+const evidenceJs = fs.readFileSync(path.join(rootDir, "poto-evidence.js"), "utf8");
+
+assert(
+  Object.isFrozen(evidence.ROOM_PROFILE) &&
+    Object.isFrozen(evidence.ROOM_PROFILE.facts.rake) &&
+    evidence.ROOM_PROFILE.facts.tableSize.value === 9 &&
+    evidence.ROOM_PROFILE.facts.rake.percentage === 0.10 &&
+    evidence.ROOM_PROFILE.facts.rake.capUsd === 6 &&
+    evidence.ROOM_PROFILE.facts.rake.status === "user-recalled-and-third-party-listed-desk-verification-pending" &&
+    evidence.ROOM_PROFILE.facts.promotionalDrop.status === "current-amount-uncertain",
+  "Poto room evidence is immutable and keeps the user's rake recollection and third-party listing separate from uncertain current drop details"
+);
+
+assert(
+  evidence.ROOM_PROFILE.facts.promotionalDrop.thirdPartyListing.length === 2 &&
+    evidence.ROOM_PROFILE.facts.promotionalDrop.thirdPartyListing[1].listingText === "$2 on $30+" &&
+    /not assumed to mean either total or additional/i.test(evidence.ROOM_PROFILE.facts.promotionalDrop.caveat),
+  "Production evidence preserves the raw drop listing without inventing collection math"
+);
+
+const shaA = "a".repeat(64);
+const shaB = "b".repeat(64);
+const completeReviewedConfiguration = {
+  players: 9,
+  effectiveStackBb: 100,
+  ante: false,
+  rakeModel: { type: "percentage-cap", percentage: 0.10, capBb: 2, rounding: "solver-default", noFlopNoDrop: true },
+  dropModel: { type: "none" },
+  straddleModel: { enabled: false },
+  exactOpenSizesBb: [3, 4, 5],
+  exactResponseSizesBb: { threeBetIp: [10, 12], threeBetOop: [12, 15], fourBet: 28 }
+};
+assert(
+  engine.getCorpusProvenanceErrors({
+    status: "solver-reviewed",
+    configuration: completeReviewedConfiguration,
+    provenance: {
+      solverConfiguration: { solverName: "Example solver", version: "1.0", convergenceTolerance: 0.01 },
+      solverOutputHash: shaA,
+      actionEvidenceHash: shaB,
+      independentExpertReview: null
+    }
+  }).length === 0,
+  "A fully specified solver-reviewed manifest clears the provenance gate"
+);
+
+const placeholderReviewErrors = engine.getCorpusProvenanceErrors({
+  status: "solver-reviewed",
+  configuration: {
+    players: 9,
+    effectiveStackBb: 100,
+    ante: false,
+    rakeModel: {},
+    dropModel: {},
+    straddleModel: {},
+    exactOpenSizesBb: [null],
+    exactResponseSizesBb: {}
+  },
+  provenance: {
+    solverConfiguration: {},
+    solverOutputHash: "not-a-hash-value",
+    actionEvidenceHash: "short-placeholder",
+    independentExpertReview: null
+  }
+});
+assert(
+  placeholderReviewErrors.some((error) => /named solver\/version/i.test(error)) &&
+    placeholderReviewErrors.some((error) => /schema-valid rake/i.test(error)) &&
+    placeholderReviewErrors.some((error) => /exact open and response sizes/i.test(error)) &&
+    placeholderReviewErrors.some((error) => /SHA-256 action-frequency/i.test(error)),
+  "Placeholder objects, null sizes, and non-hash strings cannot earn a reviewed label"
+);
 
 const aqoBtnVsMp3Standard = rec({
   openerPosition: "MP3",
@@ -541,7 +614,9 @@ assert(
     /strong, connected suited hand/i.test(qjsMpSbBalanced.coach.reason) &&
     /out of position/i.test(qjsMpSbBalanced.coach.reason) &&
     /big blind/i.test(qjsMpSbBalanced.coach.reason) &&
-    /live rake/i.test(qjsMpSbBalanced.coach.reason) &&
+    /problem is the seat, not the hand/i.test(qjsMpSbBalanced.coach.reason) &&
+    /reported room rake/i.test(qjsMpSbBalanced.coach.reason) &&
+    /was not produced by that rake model/i.test(qjsMpSbBalanced.coach.reason) &&
     /dominated/i.test(qjsMpSbBalanced.coach.reason) &&
     /3-bet/i.test(qjsMpSbBalanced.coach.adjustment) &&
     /calling remains the least attractive/i.test(qjsMpSbBalanced.coach.adjustment) &&
@@ -905,6 +980,8 @@ assert(
 [
   "drillSamplingGrid",
   "heroBaselineGrid",
+  "roomEvidenceLine",
+  "roomDropEvidenceLine",
   "villainProfileGrid",
   "vsSpotToggleGrid",
   "decisionMixNote",
@@ -938,10 +1015,11 @@ assert(
 assert(
   appJs.includes('stats: "poto_preflop_trainer_stats_v4"') &&
     appJs.includes("strategyFingerprint: STRATEGY_FINGERPRINT") &&
+    appJs.includes("roomEvidenceVersion: evidence.EVIDENCE_VERSION") &&
     appJs.includes("responseLatencyMs") &&
     appJs.includes("chosenAction") &&
     !appJs.includes("MODES.THREE_BET + key.slice"),
-  "Stats use a fingerprinted v4 schema with latency and chosen-action evidence"
+  "Stats use a fingerprinted v4 schema with latency, chosen-action, and room-evidence provenance"
 );
 
 assert(
@@ -950,10 +1028,10 @@ assert(
   "Chart exposes first-in and facing-open situations"
 );
 
-const decisionMixSource = appJs.slice(appJs.indexOf("const DECISION_MIX"), appJs.indexOf("];", appJs.indexOf("const DECISION_MIX")) + 2);
+const curriculumMixSource = evidenceJs.slice(evidenceJs.indexOf("decisionModeMix"), evidenceJs.indexOf("status: \"curriculum-prior\""));
 const chartModeSource = appJs.slice(appJs.indexOf("function buildChartControls"), appJs.indexOf("function syncChartControlsFromSettings"));
 assert(
-  !decisionMixSource.includes("MODES.FOUR_BET") &&
+  !curriculumMixSource.includes("FOUR_BET") &&
     !chartModeSource.includes("MODES.FOUR_BET") &&
     !indexHtml.includes('id="fourBetStatsList"'),
   "Context-free facing-3-bet content is withheld from the active drill, chart selector, and stats UI"
@@ -1037,9 +1115,13 @@ assert(
 
 assert(
   indexHtml.includes("Preflop Chart") &&
-    indexHtml.includes("100-133bb") &&
+    indexHtml.includes("100bb training assumption") &&
+    !indexHtml.includes("100-133bb") &&
+    engine.CORPUS_METADATA.configuration.effectiveStackBb.status === "training-assumption" &&
+    engine.CORPUS_METADATA.configuration.rakeModel === null &&
+    engine.CORPUS_METADATA.configuration.dropModel === null &&
     appJs.includes("updateChartControlVisibility"),
-  "UI uses unified Preflop Chart labeling, live stack assumptions, and situation-specific chart controls"
+  "UI labels the stack as a training assumption and does not pretend listed room costs were strategy inputs"
 );
 
 assert(
@@ -1067,13 +1149,24 @@ assert(
 );
 
 assert(
-  indexHtml.includes("./range-engine.js?v=20260710-high-ev-v4") &&
-    indexHtml.includes("./trainer-scheduler.js?v=20260710-high-ev-v4") &&
-    indexHtml.includes("./app.js?v=20260710-high-ev-v4") &&
+  indexHtml.includes("./poto-evidence.js?v=20260712-poto-calibration-v5") &&
+    indexHtml.includes("./range-engine.js?v=20260712-poto-calibration-v5") &&
+    indexHtml.includes("./trainer-scheduler.js?v=20260712-poto-calibration-v5") &&
+    indexHtml.includes("./app.js?v=20260712-poto-calibration-v5") &&
+    !indexHtml.includes('<script src="./poto-evidence.js"></script>') &&
     !indexHtml.includes('<script src="./app.js"></script>') &&
     !indexHtml.includes('<script src="./range-engine.js"></script>') &&
     !indexHtml.includes('<script src="./trainer-scheduler.js"></script>'),
   "Local scripts are versioned so deployed HTML does not pair with stale cached JS"
+);
+
+assert(
+  engineJs.includes("function validateReviewedConfiguration") &&
+    engineJs.includes("actionEvidenceHash") &&
+    engineJs.includes("Reviewed corpus requires exact player count, effective stack, and ante configuration") &&
+    engineJs.includes("Reviewed corpus requires schema-valid rake, promotional-drop, and straddle models") &&
+    engineJs.includes("Reviewed corpus requires exact open and response sizes"),
+  "A future reviewed label is blocked until exact configuration and action evidence exist"
 );
 
 if (failures > 0) {

@@ -108,22 +108,28 @@
     provenance: Object.freeze({
       solverConfiguration: null,
       solverOutputHash: null,
+      actionEvidenceHash: null,
       independentExpertReview: null,
       note: "Migrated from the trainer's hand-authored v3 defaults; no EV values or solver frequencies are asserted."
     }),
     configuration: Object.freeze({
       game: "live-no-limit-holdem-cash",
-      stakesLabel: "$1/$3 training default",
+      stakesLabel: "Potawatomi $1/$3 provisional training baseline",
       players: 9,
-      effectiveStackBb: Object.freeze({ min: 100, max: 133 }),
+      effectiveStackBb: Object.freeze({ nominal: 100, status: "training-assumption", reviewedRange: null }),
       ante: false,
       rakeModel: null,
-      exactOpenSizesBb: null
+      dropModel: null,
+      straddleModel: Object.freeze({ enabled: false, status: "training-assumption" }),
+      exactOpenSizesBb: null,
+      exactResponseSizesBb: null
     }),
     limitations: Object.freeze([
       "No independently reviewed solver or expert-approved corpus is attached.",
       "No per-action EV, regret band, or numeric mixed frequency is available.",
-      "Rake, jackpot drop, exact stack depth, straddles, limpers, callers, and numeric raise sizes are not modeled.",
+      "The reported Potawatomi rake and promotional drop are disclosed separately but are not incorporated into these actions.",
+      "The 100bb stack is a training assumption, not a claim that the room or every hand plays 100bb effective.",
+      "Straddles, limpers, callers, and numeric raise sizes are not modeled.",
       "Only the Balanced/Standard action matrix is preserved from v3; non-default profile/size behavior remains an explicitly provisional reset.",
       "Profile and size controls are operational only where an explicit corpus rule changes the recommendation."
     ])
@@ -159,8 +165,8 @@
   const RANGE_PRESETS = {
     [DEFAULT_PRESET_ID]: {
       id: DEFAULT_PRESET_ID,
-      name: "Live $1/$3 Default",
-      assumptions: "Live $1/$3 Default · 9-handed · 100-133bb · no ante",
+      name: "Poto $1/$3 Provisional",
+      assumptions: "Poto $1/$3 · 9-handed · 100bb training assumption · unstraddled",
       rfi: {
         TIGHT: {
           UTG: { open: "99+, AJs+, KQs, AQo+", mixed: "88, ATs, KJs, QJs" },
@@ -853,7 +859,7 @@
             relationship: candidateIndex < handIndex ? "higher-ranked" : "lower-ranked",
             primaryAction: candidate.primaryAction,
             allowedActions: candidate.allowedActions.slice(),
-            verifiedBy: "corpus-query",
+            evidenceKind: "provisional-corpus-query",
             corpusStatus: CORPUS_METADATA.status
           };
         }
@@ -908,7 +914,7 @@
             to: variant.id,
             primaryAction: alternative.primaryAction,
             allowedActions: alternative.allowedActions.slice(),
-            verifiedBy: "corpus-query",
+            evidenceKind: "provisional-corpus-query",
             corpusStatus: CORPUS_METADATA.status
           });
         }
@@ -1035,8 +1041,7 @@
       const shape = traits.gap === 0
         ? "a strong, connected suited hand"
         : (traits.gap === 1 ? "a strong suited one-gapper" : "a playable suited broadway");
-      reason = boundaryLead + traits.hand + " is " + shape +
-        ", but from the small blind it realizes equity poorly out of position, live rake punishes a thin flat, it can be dominated by stronger broadways, and the big blind can squeeze or come along.";
+      reason = boundaryLead + traits.hand + " is " + shape + ". The problem is the seat, not the hand: from the small blind it plays every street out of position, the big blind can squeeze or come along, and it can be dominated by stronger broadways. Reported room rake can further reduce a thin call's postflop value; this action remains provisional and was not produced by that rake model.";
     } else {
       reason = boundaryLead + traits.hand + " folds because " + describeHandLimitation(traits) +
         (isBlind ? "; the blind discount does not erase the postflop position problem" : " against the " + opener + " range") + ".";
@@ -1054,21 +1059,21 @@
     } else if (recommendation.primaryAction === ACTIONS.FOLD && args.openSize === "LARGE" && sizeOperational) {
       adjustment = "The selected 4.5-6bb size supports folding; a smaller price is the main reason to reconsider.";
     } else if (!adjustment && args.openSize === "LARGE" && sizeOperational) {
-      adjustment = "The selected 4.5-6bb size changes this corpus decision; use the verified size counterfactual rather than a generic tighten-up rule.";
+      adjustment = "The selected 4.5-6bb size changes this provisional corpus decision; use its size counterfactual rather than a generic tighten-up rule.";
     } else if (!adjustment && args.openerProfile === "TIGHT" && profileOperational) {
-      adjustment = "The selected tight range changes this corpus decision; use the verified profile counterfactual rather than a generic tighten-up rule.";
+      adjustment = "The selected tight range changes this provisional corpus decision; use its profile counterfactual rather than a generic tighten-up rule.";
     } else if (!adjustment && args.openerProfile === "LOOSE" &&
         recommendation.primaryAction === ACTIONS.FOLD && args.heroPosition === "SB" &&
         traits.isSuited && traits.isBroadway && profileOperational) {
       adjustment = "The loose range helps, but this hand still lacks enough blocker or value strength for a small-blind 3-bet; do not turn it into a rake-sensitive call.";
     } else if (!adjustment && args.openerProfile === "LOOSE" && profileOperational) {
-      adjustment = "The selected loose range changes this corpus decision; compare the verified profile counterfactual before applying it at the table.";
+      adjustment = "The selected loose range changes this provisional corpus decision; compare its profile counterfactual before applying it at the table.";
     } else if (!adjustment && recommendation.primaryAction === ACTIONS.FOLD &&
         args.heroPosition === "SB" && traits.isSuited && traits.isBroadway && profileOperational) {
       const price = args.openSize === "SMALL" ? "At 2-3bb" : "At 3-4bb";
       adjustment = price + ", a genuinely wider opener adds a 3-bet mix; calling remains the least attractive option.";
     } else if (!adjustment && (profileOperational || sizeOperational)) {
-      adjustment = "A supported setting changes this action; use the verified counterfactual shown for this exact hand and spot.";
+      adjustment = "A supported setting changes this provisional corpus action; use the shown counterfactual for this exact hand and spot.";
     } else if (!adjustment) {
       adjustment = "No supported opener profile or size changes this action in the provisional corpus.";
     }
@@ -1147,7 +1152,7 @@
     } else if (recommendation.primaryAction === ACTIONS.THREE_BET) {
       notes[ACTIONS.CALL] = "Calling gives up the initiative with a hand this range prefers to raise.";
     } else if (args.heroPosition === "SB" && traits.isSuited && traits.isBroadway) {
-      notes[ACTIONS.CALL] = "Calling is the least attractive option: it plays every street out of position, lets the big blind squeeze or come along, pays live rake, and can make dominated top pairs.";
+      notes[ACTIONS.CALL] = "Calling is the least attractive option: the problem is the small-blind seat, not the suited hand. It plays every street out of position, lets the big blind squeeze or come along, and can make dominated top pairs. Reported room rake is an additional headwind, but this provisional action was not produced by that rake model.";
     } else {
       notes[ACTIONS.CALL] = "Calling is too thin here because " + describeHandLimitation(traits) + ".";
     }
@@ -1840,33 +1845,110 @@
   }
 
   function validateCorpusProvenance(errors) {
-    const metadata = CORPUS_METADATA;
+    getCorpusProvenanceErrors(CORPUS_METADATA).forEach((error) => errors.push(error));
+  }
+
+  function getCorpusProvenanceErrors(metadataInput) {
+    const errors = [];
+    const metadata = metadataInput || {};
     const provenance = metadata.provenance || {};
     if (metadata.status === "provisional") {
       if (metadata.reviewStatus !== "not-independently-solver-or-expert-reviewed" ||
           provenance.solverConfiguration !== null ||
           provenance.solverOutputHash !== null ||
+          provenance.actionEvidenceHash !== null ||
           provenance.independentExpertReview !== null) {
         errors.push("Provisional corpus metadata must not imply solver or expert review evidence");
       }
-      return;
+      return errors;
     }
     if (metadata.status === "solver-reviewed") {
-      if (!provenance.solverConfiguration || typeof provenance.solverOutputHash !== "string" ||
-          provenance.solverOutputHash.length < 16) {
-        errors.push("Solver-reviewed corpus requires a configuration and output hash");
+      const solver = provenance.solverConfiguration;
+      if (!isPlainObject(solver) || !nonEmptyString(solver.solverName) || !nonEmptyString(solver.version) ||
+          !Number.isFinite(solver.convergenceTolerance) || solver.convergenceTolerance < 0 ||
+          !isSha256(provenance.solverOutputHash)) {
+        errors.push("Solver-reviewed corpus requires named solver/version, numeric convergence tolerance, and SHA-256 output hash");
       }
-      return;
+      validateReviewedConfiguration(metadata, errors);
+      return errors;
     }
     if (metadata.status === "expert-reviewed") {
       const review = provenance.independentExpertReview;
-      if (!review || typeof review.reviewer !== "string" || typeof review.version !== "string" ||
-          typeof review.date !== "string") {
-        errors.push("Expert-reviewed corpus requires structured reviewer, version, and date evidence");
+      if (!isPlainObject(review) || !nonEmptyString(review.reviewer) || !nonEmptyString(review.version) ||
+          !nonEmptyString(review.scope) || !/^\d{4}-\d{2}-\d{2}$/.test(review.date || "")) {
+        errors.push("Expert-reviewed corpus requires structured reviewer, version, ISO date, and scope evidence");
       }
-      return;
+      validateReviewedConfiguration(metadata, errors);
+      return errors;
     }
     errors.push("Unknown corpus review status: " + metadata.status);
+    return errors;
+  }
+
+  function validateReviewedConfiguration(metadata, errors) {
+    const configuration = metadata.configuration || {};
+    const provenance = metadata.provenance || {};
+    const exactStack = Number(configuration.effectiveStackBb);
+    if (!Number.isInteger(configuration.players) || configuration.players < 2 ||
+        !Number.isFinite(exactStack) || exactStack <= 0 ||
+        typeof configuration.ante !== "boolean") {
+      errors.push("Reviewed corpus requires exact player count, effective stack, and ante configuration");
+    }
+    if (!validRakeModel(configuration.rakeModel) || !validDropModel(configuration.dropModel) ||
+        !validStraddleModel(configuration.straddleModel)) {
+      errors.push("Reviewed corpus requires schema-valid rake, promotional-drop, and straddle models, including explicit none models");
+    }
+    if (!positiveNumberArray(configuration.exactOpenSizesBb) || !nonEmptyNumericSizeTree(configuration.exactResponseSizesBb)) {
+      errors.push("Reviewed corpus requires exact open and response sizes");
+    }
+    if (!isSha256(provenance.actionEvidenceHash)) {
+      errors.push("Reviewed corpus requires a SHA-256 action-frequency and boundary-EV or qualitative-regret evidence bundle hash");
+    }
+  }
+
+  function validRakeModel(model) {
+    return isPlainObject(model) && model.type === "percentage-cap" &&
+      Number.isFinite(model.percentage) && model.percentage >= 0 && model.percentage <= 1 &&
+      Number.isFinite(model.capBb) && model.capBb >= 0 &&
+      nonEmptyString(model.rounding) && typeof model.noFlopNoDrop === "boolean";
+  }
+
+  function validDropModel(model) {
+    if (!isPlainObject(model) || !["none", "stepwise"].includes(model.type)) return false;
+    if (model.type === "none") return true;
+    return Array.isArray(model.steps) && model.steps.length > 0 && model.steps.every((step) => (
+      isPlainObject(step) && Number.isFinite(step.potAtLeastBb) && step.potAtLeastBb >= 0 &&
+      Number.isFinite(step.totalDropBb) && step.totalDropBb >= 0
+    ));
+  }
+
+  function validStraddleModel(model) {
+    if (!isPlainObject(model) || typeof model.enabled !== "boolean") return false;
+    if (!model.enabled) return true;
+    return nonEmptyString(model.position) && Number.isFinite(model.amountBb) && model.amountBb > 0;
+  }
+
+  function positiveNumberArray(value) {
+    return Array.isArray(value) && value.length > 0 && value.every((item) => Number.isFinite(item) && item > 0);
+  }
+
+  function nonEmptyNumericSizeTree(value) {
+    if (Number.isFinite(value)) return value > 0;
+    if (Array.isArray(value)) return positiveNumberArray(value);
+    return isPlainObject(value) && Object.keys(value).length > 0 &&
+      Object.values(value).every(nonEmptyNumericSizeTree);
+  }
+
+  function isPlainObject(value) {
+    return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+  }
+
+  function nonEmptyString(value) {
+    return typeof value === "string" && value.trim().length > 0;
+  }
+
+  function isSha256(value) {
+    return typeof value === "string" && /^[a-f0-9]{64}$/i.test(value);
   }
 
   function validateRecommendationShape(recommendation, label, errors) {
@@ -2231,6 +2313,7 @@
     getCorpusActionSnapshot,
     getCorpusFingerprint,
     getCorpusMetadata,
+    getCorpusProvenanceErrors,
     getNearestContrast,
     getRecommendationGroups,
     getStrategySensitivity,

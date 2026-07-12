@@ -1,5 +1,28 @@
 # Strategy corpus change record
 
+## Room-evidence calibration — 2026-07-12
+
+The action corpus remains `poto-live-1-3-provisional-v4`; its action fingerprint
+is intentionally unchanged. This release corrects provenance and coaching:
+
+- removes the unsupported presentation of `100-133bb` as a live-room fact and
+  labels 100bb as a training assumption;
+- records nine-handed as user-reported and PokerAtlas-listed, and records that
+  the user's 10% rake capped at $6 recollection matches the same listing, while
+  keeping desk verification and the current promotional drop unresolved;
+- keeps rake/drop models `null` in the strategy configuration because those
+  costs did not produce the current actions;
+- explains small-blind suited broadways as good hands in bad seats instead of
+  misdescribing their rank or connection;
+- labels the 35/65 decision mix as curriculum emphasis rather than Poto
+  occurrence evidence;
+- hardens the reviewed-status gate so exact stack, rake, drop, straddle,
+  sizing, and hashed action evidence are required before a future corpus can be
+  labeled reviewed.
+
+Room-evidence changes do not invalidate action mastery. Any later action change
+must still update the strategy version, FNV fingerprint, and SHA-256 snapshot.
+
 ## `poto-live-1-3-provisional-v4`
 
 Status: **provisional; not solver- or expert-reviewed**.
