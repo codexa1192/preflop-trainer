@@ -128,6 +128,7 @@ html.replace(/<([A-Za-z0-9]+)([^>]*)>/g, (_match, tagName, attributeSource) => {
 
 const document = {
   activeElement: null,
+  hidden: false,
   body: new FakeElement("body"),
   listeners: {},
   createElement: (tagName) => {
@@ -154,7 +155,16 @@ const storage = new Map([
     drillSamplingMode: "BORDERLINE"
   })]
 ]);
+let nowMs = 1_000_000;
+let setFailuresRemaining = 0;
+let setAttempts = 0;
+class FakeDate extends Date {
+  static now() {
+    return nowMs;
+  }
+}
 let randomState = 123456789;
+const windowListeners = {};
 const seededMath = Object.create(Math);
 seededMath.random = () => {
   randomState = (randomState * 1664525 + 1013904223) >>> 0;
@@ -162,15 +172,28 @@ seededMath.random = () => {
 };
 const context = vm.createContext({
   console,
+  Date: FakeDate,
   document,
   Math: seededMath,
   localStorage: {
     getItem: (key) => storage.get(key) || null,
-    setItem: (key, value) => storage.set(key, String(value))
+    setItem: (key, value) => {
+      setAttempts += 1;
+      if (setFailuresRemaining > 0) {
+        setFailuresRemaining -= 1;
+        throw new Error("Synthetic storage write failure");
+      }
+      storage.set(key, String(value));
+    }
   },
   confirm: () => true,
   clearTimeout: () => {},
-  setTimeout: () => 1
+  setTimeout: () => 1,
+  requestAnimationFrame: (callback) => callback(),
+  addEventListener: (type, listener) => {
+    windowListeners[type] = windowListeners[type] || [];
+    windowListeners[type].push(listener);
+  }
 });
 context.window = context;
 context.globalThis = context;
@@ -198,10 +221,34 @@ assert.deepStrictEqual(
   ["MP3", "CO", "BTN", "SB"],
   "The legacy all-position default migrates to the time-efficient four-position focus"
 );
+assert(
+  /model by selected opener/.test(elements.get("profileDefinitionLine").textContent) &&
+    /UTG/.test(elements.get("profileDefinitionLine").textContent) &&
+    /HJ/.test(elements.get("profileDefinitionLine").textContent),
+  "The Villain definition summarizes every selected opener instead of presenting the first spot as universal"
+);
 
 const visibleActions = currentActionButtons();
 assert(visibleActions.length >= 2, "A generated question exposes valid action buttons");
 
+nowMs += 2000;
+elements.get("openSettingsBtn").click();
+nowMs += 5000;
+elements.get("closeSettingsBtn").click();
+nowMs += 750;
+elements.get("openChartsBtn").click();
+nowMs += 4000;
+elements.get("closeChartBtn").click();
+nowMs += 250;
+document.hidden = true;
+(document.listeners.visibilitychange || []).forEach((listener) => listener());
+nowMs += 7000;
+document.hidden = false;
+(document.listeners.visibilitychange || []).forEach((listener) => listener());
+nowMs += 500;
+(windowListeners.blur || []).forEach((listener) => listener());
+nowMs += 6000;
+(windowListeners.focus || []).forEach((listener) => listener());
 visibleActions[0].click();
 assert(!elements.get("feedbackBox").classList.contains("hidden"), "Answering shows feedback");
 assert.strictEqual(elements.get("sessionProgressText").textContent, "1 / 20", "Answering advances the 20-decision focus session");
@@ -212,6 +259,7 @@ assert(savedV4.answerLog[0].chosenAction, "Answer history stores the learner's c
 assert.strictEqual(savedV4.answerLog[0].roomEvidenceVersion, "poto-room-evidence-2026-07-12", "Answer history records the room-evidence version without changing the strategy fingerprint");
 assert(savedV4.answerLog[0].conceptKey.includes(savedV4.answerLog[0].hand), "Concept mastery includes the exact hand instead of collapsing a whole suited/offsuit family");
 assert(Number.isFinite(savedV4.answerLog[0].responseLatencyMs), "Answer history stores response latency");
+assert.strictEqual(savedV4.answerLog[0].responseLatencyMs, 3500, "Response latency counts only visible question time outside app modals");
 assert(savedV4.answerLog[0].answeredAt > 0, "Answer history stores an answer timestamp");
 assert(savedV4.byLeak[savedV4.answerLog[0].questionKey], "Exact question records back the leak dashboard");
 assert(!elements.get("whyLine").classList.contains("hidden"), "Answering shows coaching immediately");
@@ -235,6 +283,11 @@ elements.get("whyBtn").click();
 assert(elements.get("whyLine").classList.contains("hidden"), "Explanation control hides coaching");
 elements.get("whyBtn").click();
 assert(!elements.get("whyLine").classList.contains("hidden"), "Explanation control restores coaching");
+
+elements.get("viewCurrentChartBtn").click();
+assert.strictEqual(elements.get("chartDetail").scrollIntoViewCalls.length, 1, "Viewing the current chart reveals that exact hand's explanation");
+elements.get("closeChartBtn").click();
+elements.get("chartDetail").scrollIntoViewCalls = [];
 
 assert(elements.get("spotLine").scrollIntoViewCalls.length === 0, "Initial question does not force-scroll the page");
 elements.get("nextBtn").click();
@@ -307,6 +360,16 @@ assert(!elements.get("chartModal").classList.contains("hidden"), "Chart opens");
 assert.strictEqual(elements.get("appContent").inert, true, "Opening a modal makes the background inert");
 assert(elements.get("chartModeSelect").options.length === 2, "Chart exposes only the two fully contextualized situations");
 assert(elements.get("chartMatrix").children.length === 169, "Chart renders all 169 hand classes");
+const mixedChartCell = elements.get("chartMatrix").children.find((cell) => /reasonable alternative/.test(cell.attributes["aria-label"] || ""));
+assert(mixedChartCell, "Mixed chart cells expose their default and reasonable alternative to assistive technology");
+assert.strictEqual(elements.get("chartMatrix").children.filter((cell) => cell.tabIndex === 0).length, 1, "The hand chart exposes one keyboard tab stop instead of 169");
+mixedChartCell.click();
+assert.strictEqual(elements.get("chartDetail").scrollIntoViewCalls.length, 1, "Selecting a chart hand reveals its coaching detail");
+const mixedCellIndex = elements.get("chartMatrix").children.indexOf(mixedChartCell);
+const arrowTarget = elements.get("chartMatrix").children[Math.min(168, mixedCellIndex + 1)];
+(mixedChartCell.listeners.keydown || []).forEach((listener) => listener({ key: "ArrowRight", preventDefault: () => {} }));
+assert.strictEqual(document.activeElement, arrowTarget, "Arrow keys move focus between chart hands");
+assert.strictEqual(arrowTarget.tabIndex, 0, "Arrow navigation moves the chart's single tab stop with focus");
 elements.get("closeChartBtn").click();
 assert.strictEqual(elements.get("appContent").inert, false, "Closing a modal restores the background");
 
@@ -319,5 +382,162 @@ assert.strictEqual(document.activeElement, elements.get("openSettingsBtn"), "Clo
 assert(elements.get("heroBaselineGrid").children.length > 0, "Settings expose a dedicated Hero baseline");
 assert(elements.get("villainProfileGrid").children.length === 3, "Settings expose a separate Villain model");
 assert(elements.get("vsSpotToggleGrid").children.length === 35, "Settings expose all exact facing-open spots");
+
+function checkedValue(gridId) {
+  const input = elements.get(gridId).children
+    .map((label) => label.children[0])
+    .find((candidate) => candidate.checked);
+  return input && input.value;
+}
+
+function recommendationForCurrentQuestion() {
+  const engine = context.PotoRangeEngine;
+  const spot = elements.get("spotLine").textContent;
+  const hand = elements.get("handLine").textContent;
+  if (spot.startsWith("First in - Hero ")) {
+    const label = spot.slice("First in - Hero ".length);
+    const position = engine.RFI_POSITIONS.find((id) => engine.positionLabel(id) === label);
+    return engine.recommend({
+      mode: engine.MODES.RFI,
+      position,
+      hand,
+      heroBaseline: checkedValue("heroBaselineGrid")
+    });
+  }
+  const match = spot.match(/^Facing open - (.+) opens, Hero (.+)$/);
+  assert(match, "The current facing-open question has a parseable context label");
+  const exactSpot = engine.getValidVsOpenSpots().find((candidate) =>
+    engine.positionLabel(candidate.openerPosition) === match[1] &&
+    engine.positionLabel(candidate.heroPosition) === match[2]
+  );
+  assert(exactSpot, "The current facing-open labels map back to an exact strategy spot");
+  return engine.recommend({
+    mode: engine.MODES.VS_OPEN,
+    openerPosition: exactSpot.openerPosition,
+    heroPosition: exactSpot.heroPosition,
+    hand,
+    openerProfile: checkedValue("villainProfileGrid"),
+    openSize: checkedValue("openSizeGrid")
+  });
+}
+
+let acceptableLeak = null;
+for (let probe = 0; !acceptableLeak && probe < 40; probe += 1) {
+  const recommendation = recommendationForCurrentQuestion();
+  const alternative = recommendation.allowedActions.find((action) => action !== recommendation.primaryAction);
+  const action = alternative || recommendation.primaryAction;
+  const button = currentActionButtons().find((candidate) => candidate.attributes["data-action"] === action);
+  assert(button, "The preferred or acceptable action is available in the current drill");
+  button.click();
+  if (alternative) {
+    const snapshot = persistedStats();
+    acceptableLeak = snapshot.byLeak[snapshot.answerLog[0].questionKey];
+    assert.strictEqual(elements.get("resultLine").textContent, "Reasonable alternative", "A mixed-strategy alternative remains a passing answer");
+    assert.strictEqual(acceptableLeak.misses, 0, "A reasonable alternative is not recorded as a miss");
+    assert.strictEqual(acceptableLeak.nonPreferred, 1, "A reasonable alternative records a preferred-action gap");
+    assert.strictEqual(acceptableLeak.unresolved, true, "A preferred-action gap enters relearning");
+    const displayedCard = elements.get("leakList").children.find((item) =>
+      item.children[0] && item.children[0].children[0] &&
+      item.children[0].children[0].textContent.startsWith(acceptableLeak.hand + " · ")
+    );
+    assert(displayedCard, "The leak dashboard surfaces an unresolved acceptable-but-nonpreferred decision");
+    assert(/Accepted but non-default/.test(displayedCard.children[0].children[1].textContent), "The dashboard explains a preferred-action gap without calling it a miss");
+    break;
+  }
+  elements.get("nextBtn").click();
+  if (!elements.get("sessionCompletePanel").classList.contains("hidden")) {
+    elements.get("restartSessionBtn").click();
+  }
+}
+assert(acceptableLeak, "The focused sampler reaches a mixed-strategy alternative for dashboard regression coverage");
+
+const samplingInputs = elements.get("drillSamplingGrid").children.map((label) => label.children[0]);
+const originalSampling = samplingInputs.find((input) => input.checked);
+const alternateSampling = samplingInputs.find((input) => !input.checked);
+const writesBeforeSettingsRecovery = setAttempts;
+setFailuresRemaining = 1;
+originalSampling.checked = false;
+alternateSampling.checked = true;
+(alternateSampling.listeners.change || []).forEach((listener) => listener({ target: alternateSampling }));
+assert(/Progress cannot be saved/.test(elements.get("masteryLine").textContent), "A failed settings write immediately shows the persistence warning");
+assert(/Could not save settings/.test(elements.get("settingsNotice").textContent), "A failed settings write is visible inside the open Settings modal");
+alternateSampling.checked = false;
+originalSampling.checked = true;
+(originalSampling.listeners.change || []).forEach((listener) => listener({ target: originalSampling }));
+assert.strictEqual(setAttempts, writesBeforeSettingsRecovery + 2, "A later settings save retries storage after a write failure");
+assert(!/Progress cannot be saved/.test(elements.get("masteryLine").textContent), "A successful settings retry clears stale persistence feedback");
+assert(/Settings saving restored/.test(elements.get("settingsNotice").textContent), "A recovered settings write replaces the visible failure notice");
+
+setFailuresRemaining = 1;
+elements.get("quickLiveDefaultsBtn").click();
+assert(
+  /defaults apply to this tab, but could not be saved/.test(elements.get("settingsNotice").textContent),
+  "Quick Live Defaults does not overwrite a save failure with false success"
+);
+elements.get("quickLiveDefaultsBtn").click();
+assert.strictEqual(
+  elements.get("settingsNotice").textContent,
+  "Live $1/$3 defaults restored.",
+  "Quick Live Defaults claims durable success only after persistence recovers"
+);
+
+const writesBeforeRecoveryTest = setAttempts;
+setFailuresRemaining = 1;
+elements.get("resetStatsBtn").click();
+assert(/Progress cannot be saved/.test(elements.get("masteryLine").textContent), "A storage write failure stays visible to the learner");
+assert(/could not be saved/.test(elements.get("settingsNotice").textContent), "Reset Stats does not claim durable success after a failed write");
+elements.get("resetStatsBtn").click();
+assert.strictEqual(setAttempts, writesBeforeRecoveryTest + 2, "A later save retries storage after a write failure");
+assert.strictEqual(persistedStats().total, 0, "Reset Stats persists after storage becomes available again");
+assert(!/Progress cannot be saved/.test(elements.get("masteryLine").textContent), "A successful retry clears the persistence warning");
+assert.strictEqual(elements.get("settingsNotice").textContent, "Stats reset.", "Reset Stats claims success only after persistence succeeds");
+
+const appSource = fs.readFileSync(path.join(rootDir, "app.js"), "utf8");
+[
+  { missing: "range engine", globals: { PotoTrainerScheduler: {}, PotoEvidence: {} } },
+  { missing: "scheduler", globals: { PotoRangeEngine: {}, PotoEvidence: {} } },
+  { missing: "evidence", globals: { PotoRangeEngine: {}, PotoTrainerScheduler: {} } }
+].forEach(({ missing, globals }) => {
+  const bootHost = new FakeElement("main");
+  const bootDocument = {
+    body: new FakeElement("body"),
+    createElement: (tagName) => new FakeElement(tagName),
+    getElementById: (id) => id === "appContent" ? bootHost : null
+  };
+  const bootContext = vm.createContext({ console, document: bootDocument, ...globals });
+  bootContext.window = bootContext;
+  bootContext.globalThis = bootContext;
+  assert.doesNotThrow(
+    () => vm.runInContext(appSource, bootContext, { filename: "app.js" }),
+    "A missing " + missing + " dependency does not crash app boot"
+  );
+  assert.strictEqual(bootHost.children.length, 1, "A missing " + missing + " dependency renders one calm boot error");
+  assert.strictEqual(bootHost.children[0].attributes.role, "alert", "The boot error is announced accessibly");
+  assert.strictEqual(bootHost.children[0].children[0].textContent, "Trainer couldn't start", "The boot error explains the visible state");
+  assert(/refresh this page/.test(bootHost.children[0].children[1].textContent), "The boot error gives a recovery action");
+});
+
+const watchdogMatch = html.match(/<script id="bootWatchdog">([\s\S]*?)<\/script>/);
+assert(watchdogMatch, "The HTML includes an app-script boot watchdog");
+const missingAppHost = new FakeElement("main");
+const missingAppDocument = {
+  body: new FakeElement("body"),
+  createElement: (tagName) => new FakeElement(tagName),
+  getElementById: (id) => id === "appContent" ? missingAppHost : null
+};
+const missingAppWindow = {
+  PotoTrainerReady: false,
+  setTimeout: (callback) => callback()
+};
+vm.runInNewContext(watchdogMatch[1], { window: missingAppWindow, document: missingAppDocument });
+assert.strictEqual(missingAppHost.children.length, 1, "A missing app.js request replaces the loading shell with one recovery panel");
+assert.strictEqual(missingAppHost.children[0].attributes.role, "alert", "The missing-app recovery panel is announced accessibly");
+assert.strictEqual(missingAppHost.children[0].children[0].textContent, "Trainer couldn't start", "The app watchdog prevents a plausible dead trainer");
+assert(
+  /id="questionPanel"[^>]*aria-busy="true"/.test(html) &&
+    /id="yesActionBtn"[^>]*disabled/.test(html) &&
+    /<noscript>/.test(html),
+  "The static shell is visibly loading and inert before JavaScript succeeds"
+);
 
 console.log("App interaction smoke test passed.");

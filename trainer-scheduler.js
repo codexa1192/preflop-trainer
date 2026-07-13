@@ -14,6 +14,8 @@
   const RECENT_HAND_LIMIT = 8;
   const MAX_QUESTION_RECORDS = 2400;
   const MAX_CONCEPT_RECORDS = 1200;
+  const MAX_RELEARNING_QUEUE = 200;
+  const MIN_FIRST_REVIEW_RETENTION = 40;
   const CURRENT_STRATEGY_VERSION = "v4";
   const DAY_MS = 24 * 60 * 60 * 1000;
   const FLUENT_RESPONSE_MS = 8000;
@@ -148,6 +150,16 @@
     return clampWeight((1 + coverageBoost + weaknessBoost) * recentPenalty, 0.18, 3.4);
   }
 
+  function allowsDueReview(args) {
+    const input = args || {};
+    if (input.sessionKind === "TARGETED") return true;
+    const answered = cleanCount(input.answered);
+    const dueDrawn = cleanCount(input.dueDrawn);
+    const requestedShare = Number(input.maxShare);
+    const maxShare = Number.isFinite(requestedShare) ? Math.min(1, Math.max(0, requestedShare)) : 0.75;
+    return dueDrawn < Math.ceil((answered + 1) * maxShare);
+  }
+
   function scoreHandOption(args) {
     const input = args || {};
     const record = normalizeQuestionRecord(input.record) || emptyRecord();
@@ -175,6 +187,48 @@
     return clampWeight(score, 0, 8);
   }
 
+  function buildExactPriorityOptions(rows, args) {
+    const input = args || {};
+    const sequence = cleanCount(input.sequence);
+    const now = cleanTimestamp(input.now) || Date.now();
+    const recent = new Set(Array.isArray(input.recentQuestionKeys) ? input.recentQuestionKeys : []);
+    const excluded = new Set(Array.isArray(input.excludedQuestionKeys) ? input.excludedQuestionKeys : []);
+    const unseenScore = scoreHandOption({ sequence, now, comboWeight: 1 });
+    if (!Array.isArray(rows)) return [];
+
+    return rows.map((row) => {
+      if (!isPlainObject(row) || !isSafeQuestionKey(row.questionKey) || excluded.has(row.questionKey)) {
+        return null;
+      }
+      const record = normalizeQuestionRecord(row.record);
+      if (!record || !record.total) return null;
+      const dueNow = Boolean(
+        (record.nextReviewSequence && sequence >= record.nextReviewSequence) ||
+        (record.dueAt && now >= record.dueAt)
+      );
+      const unresolved = row.unresolved === true || record.relearningStage >= 0 ||
+        Boolean(record.lastMissedAt && record.preferredStreak < 3);
+      if ((!dueNow && !unresolved) || (!dueNow && recent.has(row.questionKey))) {
+        return null;
+      }
+      const weight = scoreHandOption({
+        record,
+        conceptRecord: row.conceptRecord,
+        sequence,
+        now,
+        comboWeight: positiveWeight(row.comboWeight, 1),
+        isInvariant: Boolean(row.isInvariant),
+        isRecentHand: Boolean(row.isRecentHand)
+      });
+      if (!dueNow && weight <= unseenScore) return null;
+      return {
+        ...row,
+        dueNow,
+        weight: dueNow ? Math.max(weight, unseenScore * 2) : weight
+      };
+    }).filter(Boolean);
+  }
+
   function scoreLearningPriority(args) {
     const input = args || {};
     const record = normalizeQuestionRecord(input.record) || emptyRecord();
@@ -188,13 +242,27 @@
     const regret = nonNegativeWeight(input.regretWeight, 1);
     const weakness = positiveWeight(input.weaknessWeight, learningNeed(record, conceptRecord));
     const due = positiveWeight(input.dueScore, dueScore(record, input));
-    const tierPenalty = retentionPenalty(retentionTier(record, conceptRecord, input.isInvariant));
+    const tierPenalty = retentionPenaltyForEvidence(record, conceptRecord, input.isInvariant);
     return sampling * occurrence * combinations * regret * weakness * due * tierPenalty;
   }
 
   function learningNeed(record, conceptRecord) {
     const exact = record || emptyRecord();
-    const source = exact.total ? exact : (conceptRecord || exact);
+    const concept = conceptRecord || emptyRecord();
+    if (!exact.total) {
+      return singleRecordLearningNeed(concept, false);
+    }
+    const exactNeed = singleRecordLearningNeed(exact, exact.correct < exact.total);
+    if (isUnresolvedRecord(exact) || !concept.total || concept.total <= exact.total || exact.total >= 3) {
+      return exactNeed;
+    }
+    const prior = subtractExactEvidence(concept, exact);
+    if (!prior.total) return exactNeed;
+    const confidence = Math.min(exact.total / 3, 1);
+    return exactNeed * confidence + singleRecordLearningNeed(prior, false) * (1 - confidence);
+  }
+
+  function singleRecordLearningNeed(source, exactMissBoost) {
     if (!source.total) {
       return 1.25;
     }
@@ -204,8 +272,36 @@
       ? Math.min(0.7, (source.averageLatencyMs - FLUENT_RESPONSE_MS) / FLUENT_RESPONSE_MS * 0.25)
       : 0;
     const lapsePenalty = Math.min(0.8, source.lapses / Math.max(2, source.total));
-    const exactMissBoost = exact.total && exact.correct < exact.total ? 0.35 : 0;
-    return 0.72 + missRate * 1.8 + acceptableRate * 0.7 + latencyPenalty + lapsePenalty + exactMissBoost;
+    return 0.72 + missRate * 1.8 + acceptableRate * 0.7 + latencyPenalty + lapsePenalty + (exactMissBoost ? 0.35 : 0);
+  }
+
+  function subtractExactEvidence(concept, exact) {
+    const total = Math.max(0, concept.total - exact.total);
+    const correct = Math.min(total, Math.max(0, concept.correct - exact.correct));
+    return {
+      ...emptyRecord(),
+      total,
+      correct,
+      preferred: Math.min(correct, Math.max(0, concept.preferred - exact.preferred)),
+      averageLatencyMs: concept.averageLatencyMs,
+      lapses: Math.min(total, Math.max(0, concept.lapses - exact.lapses))
+    };
+  }
+
+  function isUnresolvedRecord(record) {
+    return Boolean(record && (record.relearningStage >= 0 || (record.lastMissedAt && record.preferredStreak < 3)));
+  }
+
+  function retentionPenaltyForEvidence(record, conceptRecord, invariantHint) {
+    const exact = record || emptyRecord();
+    const concept = conceptRecord || emptyRecord();
+    const exactPenalty = retentionPenalty(retentionTier(exact, null, invariantHint));
+    if (isUnresolvedRecord(exact) || !exact.total || !concept.total || concept.total <= exact.total || exact.total >= 3) {
+      return exact.total ? exactPenalty : retentionPenalty(retentionTier(concept, null, invariantHint));
+    }
+    const confidence = Math.min(exact.total / 3, 1);
+    const conceptPenalty = retentionPenalty(retentionTier(concept, null, invariantHint));
+    return exactPenalty * confidence + conceptPenalty * (1 - confidence);
   }
 
   function retentionTier(record, conceptRecord, invariantHint) {
@@ -286,8 +382,17 @@
     stats.sequence = cleanCount(stats.sequence) + 1;
     const answeredAt = cleanTimestamp(result.timestamp || result.answeredAt) || Date.now();
     const conceptKey = isSafeQuestionKey(result.conceptKey) ? result.conceptKey : "";
+    const previousExact = normalizeQuestionRecord(stats.byQuestion[result.questionKey]) || emptyRecord();
+    const previousReviewState = {
+      relearningStage: previousExact.relearningStage,
+      nextReviewSequence: previousExact.nextReviewSequence,
+      dueAt: previousExact.dueAt
+    };
+    const missingQueueReviewDue = previousReviewState.relearningStage >= 0 &&
+      !stats.relearningQueue.some((entry) => entry.questionKey === result.questionKey) &&
+      isRecordReviewDue(previousExact, stats.sequence, answeredAt);
     const exact = updateLearningRecord(
-      normalizeQuestionRecord(stats.byQuestion[result.questionKey]) || emptyRecord(),
+      previousExact,
       result,
       stats.sequence,
       answeredAt,
@@ -306,8 +411,18 @@
       );
     }
 
-    updateRelearningQueue(stats, result, answeredAt, conceptKey);
-    mirrorQueueState(exact, stats.relearningQueue.find((entry) => entry.questionKey === result.questionKey));
+    updateRelearningQueue(stats, result, answeredAt, conceptKey, missingQueueReviewDue);
+    const queueEntry = stats.relearningQueue.find((entry) => entry.questionKey === result.questionKey);
+    if (queueEntry) {
+      mirrorQueueState(exact, queueEntry);
+    } else if (previousReviewState.relearningStage >= 0 && !missingQueueReviewDue && Boolean(result.isPassing) &&
+      (result.isPreferred === undefined ? true : Boolean(result.isPreferred))) {
+      exact.relearningStage = previousReviewState.relearningStage;
+      exact.nextReviewSequence = previousReviewState.nextReviewSequence;
+      exact.dueAt = previousReviewState.dueAt;
+    } else {
+      mirrorQueueState(exact, null);
+    }
     remember(stats.recentQuestions, result.questionKey, RECENT_QUESTION_LIMIT);
     remember(stats.recentContexts, result.contextKey, RECENT_CONTEXT_LIMIT);
     remember(stats.recentHands, result.hand, RECENT_HAND_LIMIT);
@@ -375,7 +490,7 @@
     return isInvariant && streak >= 2 ? Math.max(interval, 7 * DAY_MS) : interval;
   }
 
-  function updateRelearningQueue(stats, result, answeredAt, conceptKey) {
+  function updateRelearningQueue(stats, result, answeredAt, conceptKey, missingQueueReviewDue) {
     const index = stats.relearningQueue.findIndex((entry) => entry.questionKey === result.questionKey);
     const isPreferred = Boolean(result.isPassing) &&
       (result.isPreferred === undefined ? true : Boolean(result.isPreferred));
@@ -388,7 +503,20 @@
       }
       return;
     }
-    if (index === -1 || !isQueueEntryDue(stats.relearningQueue[index], {
+    if (index === -1) {
+      const record = stats.byQuestion[result.questionKey];
+      if (missingQueueReviewDue && record && record.relearningStage >= 0 && record.relearningStage < RELEARNING_STAGES.length - 1) {
+        stats.relearningQueue.push(makeQueueEntry(
+          result,
+          answeredAt,
+          record.conceptKey || conceptKey,
+          record.relearningStage + 1,
+          stats.sequence
+        ));
+      }
+      return;
+    }
+    if (!isQueueEntryDue(stats.relearningQueue[index], {
       sequence: stats.sequence,
       now: answeredAt,
       sessionId: result.sessionId
@@ -473,12 +601,22 @@
     return false;
   }
 
+  function isRecordReviewDue(record, sequence, now) {
+    return Boolean(
+      (record.nextReviewSequence && sequence >= record.nextReviewSequence) ||
+      (record.dueAt && now >= record.dueAt)
+    );
+  }
+
   function queueUrgency(entry, args) {
     const sequence = cleanCount(args && args.sequence);
     const now = cleanTimestamp(args && args.now) || Date.now();
     const sequenceDebt = entry.dueSequence ? Math.max(0, sequence - entry.dueSequence) : 0;
     const timeDebt = entry.dueAt ? Math.max(0, now - entry.dueAt) / (60 * 60 * 1000) : 0;
-    return (RELEARNING_STAGES.length - entry.stage) * 1000 + sequenceDebt + timeDebt;
+    // Once a review is due, durable retrieval should not sit behind an endless
+    // stream of new stage-zero misses. Favor overdue debt and later spacing
+    // stages, while still letting a heavily overdue first review move ahead.
+    return entry.stage * 32 + sequenceDebt * 4 + timeDebt + (entry.reason === "MISSED" ? 1 : 0);
   }
 
   function restoreAdaptiveStats(stats, parsed, args) {
@@ -842,13 +980,23 @@
         byQuestion.set(entry.questionKey, entry);
       }
     });
-    return Array.from(byQuestion.values())
+    const rows = Array.from(byQuestion.values());
+    const firstReviews = rows
+      .filter((entry) => entry.stage === 0)
+      .sort((a, b) => cleanTimestamp(b.enqueuedAt) - cleanTimestamp(a.enqueuedAt))
+      .slice(0, MIN_FIRST_REVIEW_RETENTION);
+    const retainedKeys = new Set(firstReviews.map((entry) => entry.questionKey));
+    const retained = firstReviews.concat(rows
+      .filter((entry) => !retainedKeys.has(entry.questionKey))
       .sort((a, b) => queueRetentionPriority(b) - queueRetentionPriority(a))
-      .slice(0, 200);
+      .slice(0, MAX_RELEARNING_QUEUE - firstReviews.length));
+    return retained.sort((a, b) => queueRetentionPriority(b) - queueRetentionPriority(a));
   }
 
   function queueRetentionPriority(entry) {
-    return (RELEARNING_STAGES.length - entry.stage) * 1e15 + cleanTimestamp(entry.enqueuedAt);
+    // The bounded queue must preserve the hardest-to-rebuild evidence first:
+    // later-stage delayed reviews, then the most recently scheduled item.
+    return entry.stage * 1e15 + cleanTimestamp(entry.enqueuedAt);
   }
 
   function normalizeQueueEntry(row) {
@@ -958,7 +1106,9 @@
     RECENT_HAND_LIMIT,
     RECENT_QUESTION_LIMIT,
     RELEARNING_STAGES,
+    allowsDueReview,
     buildChallengeOptions,
+    buildExactPriorityOptions,
     capWeightedOptions,
     classifyDecisionBoundaryRows,
     comboCount,

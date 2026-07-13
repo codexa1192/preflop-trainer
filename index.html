@@ -1003,6 +1003,12 @@ a:focus-visible,
 </head>
 <body>
   <div id="appContent" class="app">
+    <noscript>
+      <section class="panel" role="alert">
+        <h2>Trainer couldn't start</h2>
+        <p>JavaScript is required for the poker decisions and explanations. Enable it, then refresh this page.</p>
+      </section>
+    </noscript>
     <header class="topbar">
       <div>
         <h1>Poto Preflop Trainer</h1>
@@ -1028,16 +1034,16 @@ a:focus-visible,
         <div id="sessionProgressFill" class="session-progress-fill"></div>
       </div>
 
-      <div id="questionPanel" role="group" tabindex="-1" aria-labelledby="spotLine handLine" aria-describedby="assumptionLine samplingLine">
-        <p id="spotLine" class="spot-line">Preflop Decision</p>
-        <p id="assumptionLine" class="assumption-line">Poto $1/$3 · 9-handed · 100bb training assumption · unstraddled</p>
+      <div id="questionPanel" role="group" tabindex="-1" aria-busy="true" aria-labelledby="spotLine handLine" aria-describedby="assumptionLine samplingLine">
+        <p id="spotLine" class="spot-line">Loading trainer…</p>
+        <p id="assumptionLine" class="assumption-line">Preparing the strategy corpus and study queue.</p>
         <p id="samplingLine" class="sampling-line hidden">Focused high-value review</p>
-        <p id="handLine" class="hand-line">AKo</p>
+        <p id="handLine" class="hand-line">--</p>
         <p class="prompt">Choose the default action</p>
         <div id="actionsRow" class="actions">
-          <button id="yesActionBtn" class="action-btn action-yes" type="button">OPEN</button>
-          <button id="callActionBtn" class="action-btn action-call hidden" type="button">CALL</button>
-          <button id="noActionBtn" class="action-btn action-no" type="button">FOLD</button>
+          <button id="yesActionBtn" class="action-btn action-yes" type="button" disabled>OPEN</button>
+          <button id="callActionBtn" class="action-btn action-call hidden" type="button" disabled>CALL</button>
+          <button id="noActionBtn" class="action-btn action-no" type="button" disabled>FOLD</button>
         </div>
         <div id="feedbackBox" class="feedback hidden" aria-live="polite">
           <p id="resultLine" class="feedback-copy"></p>
@@ -1222,15 +1228,33 @@ a:focus-visible,
 
       <p class="chart-scroll-hint">Swipe horizontally on a phone. Every hand is a full-size tap target.</p>
       <div class="chart-scroll" tabindex="0" aria-label="Scrollable 13 by 13 hand chart">
-        <div id="chartMatrix" class="chart-matrix" aria-label="13 by 13 hand chart"></div>
+        <div id="chartMatrix" class="chart-matrix" aria-label="13 by 13 hand chart; use arrow keys to move between hands"></div>
       </div>
       <div id="chartDetail" class="chart-detail" aria-live="polite"></div>
     </div>
   </div>
 
-<script src="./poto-evidence.js?v=20260712-poto-calibration-v5"></script>
-<script src="./range-engine.js?v=20260712-poto-calibration-v5"></script>
-<script src="./trainer-scheduler.js?v=20260712-poto-calibration-v5"></script>
-<script src="./app.js?v=20260712-poto-calibration-v5"></script>
+<script src="./poto-evidence.js?v=20260712-high-ev-v6"></script>
+<script src="./range-engine.js?v=20260712-high-ev-v6"></script>
+<script src="./trainer-scheduler.js?v=20260712-high-ev-v6"></script>
+<script src="./app.js?v=20260712-high-ev-v6"></script>
+<script id="bootWatchdog">
+window.setTimeout(function showBootFailureIfNeeded() {
+  if (window.PotoTrainerReady) return;
+  const host = document.getElementById("appContent") || document.body;
+  if (!host) return;
+  const panel = document.createElement("section");
+  panel.className = "panel";
+  panel.setAttribute("role", "alert");
+  const title = document.createElement("h2");
+  title.textContent = "Trainer couldn't start";
+  const copy = document.createElement("p");
+  copy.textContent = "A required app file did not load. Check your connection, then refresh this page.";
+  panel.append(title, copy);
+  host.textContent = "";
+  host.appendChild(panel);
+  window.PotoTrainerReady = true;
+}, 1500);
+</script>
 </body>
 </html>

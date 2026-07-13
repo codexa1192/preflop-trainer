@@ -34,6 +34,14 @@ information and can create misleading EV language.
 - An invariant premium decision retires rapidly and receives sparse maintenance.
 - Durable mastery requires successful delayed retrieval, not six immediate
   repetitions.
+- Exact due reviews are selected before aggregate mode and context sampling.
+  Non-due personal weak spots may use a capped priority lane, but they must not
+  bypass the explicit relearning intervals or recent-question cooldown.
+- A normal focus session caps due reviews at 75% of its questions so an old
+  backlog cannot eliminate all new coverage. An explicitly targeted leak drill
+  may devote its full session to that review sequence.
+- Broader concept evidence is only a bounded prior for the first three exact
+  observations. It must never dilute an unresolved exact miss.
 - The session may finish early when no high-value item is due.
 
 ## Required scheduler simulations
@@ -41,6 +49,12 @@ information and can create misleading EV language.
 - No boundary may exist solely because a pair cell touches a non-pair cell on
   the 13-by-13 chart.
 - A seeded miss must reappear inside the first review window.
+- A non-queue exact retention review must become globally eligible when due.
+- Delayed reviews must not starve behind newly due first reviews.
+- Capacity pruning must retain a bounded pool of first reviews and reconstruct
+  the next spacing stage when a due queue entry was pruned.
+- Concept transfer must taper across early exact observations and never hide an
+  exact miss.
 - Mastered invariant premiums must remain below their retention ceiling.
 - A strategy fingerprint change must invalidate affected exact mastery.
 - A synthetic costly weak spot must receive materially more practice within a

@@ -234,12 +234,48 @@ assert(
   "Villain profile never silently rewrites Hero RFI while explicit Hero baseline remains operational"
 );
 
+const unsupportedThreeBetMode = engine.recommend({
+  mode: engine.MODES.THREE_BET,
+  hand: "72o"
+});
+const unsupportedRfiBigBlind = engine.recommend({
+  mode: engine.MODES.RFI,
+  position: "BB",
+  hand: "77"
+});
+const unsupportedImpossibleFacingOpen = engine.recommend({
+  mode: engine.MODES.VS_OPEN,
+  openerPosition: "BTN",
+  heroPosition: "CO",
+  hand: "AA",
+  openerProfile: "BALANCED",
+  openSize: "STANDARD"
+});
+[unsupportedThreeBetMode, unsupportedRfiBigBlind, unsupportedImpossibleFacingOpen].forEach((recommendation) => {
+  const grade = engine.gradeRecommendation(recommendation, engine.ACTIONS.FOLD);
+  assert(
+    recommendation.supported === false &&
+      recommendation.gradable === false &&
+      recommendation.primaryAction === null &&
+      recommendation.allowedActions.length === 0 &&
+      grade.gradable === false &&
+      !grade.isPassing &&
+      grade.label === "Not graded",
+    `${recommendation.contextLabel} is explicitly unsupported and cannot be graded`
+  );
+});
+assert(
+  engine.gradeThreeBetDecision(unsupportedThreeBetMode, false).gradable === false,
+  "Legacy 3-bet grading also refuses unsupported scenarios"
+);
+
 const integrity = engine.validateStrategyIntegrity();
 assert(
   integrity.ok && integrity.summary.vsOpenContexts === 35 &&
     Object.isFrozen(engine.RANGE_PRESETS) &&
-    /^fnv1a32:[0-9a-f]{8}$/.test(engine.getCorpusFingerprint()),
-  "Strategy corpus is complete, deeply immutable, and behavior-fingerprinted"
+    /^fnv1a32:[0-9a-f]{8}$/.test(engine.getCorpusFingerprint()) &&
+    engine.getCorpusFingerprint() === engine.computeCorpusFingerprint(),
+  "Strategy corpus is complete, deeply immutable, behavior-fingerprinted, and CI verifies the production constant"
 );
 
 [
@@ -597,6 +633,18 @@ const tightLargeAqoMpCo = rec({
   openerProfile: "TIGHT",
   openSize: "LARGE"
 });
+const tightLargeKqsUtgSb = rec({
+  openerPosition: "UTG",
+  heroPosition: "SB",
+  hand: "KQs",
+  openerProfile: "TIGHT",
+  openSize: "LARGE"
+});
+const smallPair22UtgBb = rec({
+  openerPosition: "UTG",
+  heroPosition: "BB",
+  hand: "22"
+});
 assert(
   /lacks suitedness|poor connection/i.test(trashBlindFold.coach.reason) &&
     /out of position/i.test(trashBlindFold.coach.takeaway) &&
@@ -606,6 +654,20 @@ assert(
     !/price/i.test(rfi55UtgFold.coach.reason) &&
     /larger pot/i.test(early77Call.coach.actionNotes[engine.ACTIONS.THREE_BET]),
   "Coach explanations match the hand family and exact blind context"
+);
+
+assert(
+  tightLargeKqsUtgSb.primaryAction === engine.ACTIONS.CALL &&
+    /clears the high bar for a small-blind call/i.test(tightLargeKqsUtgSb.coach.takeaway) &&
+    !/prefer a clear 3-bet or disciplined fold/i.test(tightLargeKqsUtgSb.coach.takeaway),
+  "A supported small-blind call no longer receives contradictory 3-bet-or-fold coaching"
+);
+
+assert(
+  smallPair22UtgBb.primaryAction === engine.ACTIONS.CALL &&
+    /limited unimproved showdown value/i.test(recommendationCopy(smallPair22UtgBb)) &&
+    !/solid (?:raw equity|showdown value)/i.test(recommendationCopy(smallPair22UtgBb)),
+  "22 coaching describes a set-driven small pair without overstating showdown value"
 );
 
 assert(
@@ -1069,6 +1131,13 @@ assert(
   "Context adaptation and actionable stats are scoped to Hero baseline, Villain model, size, and strategy fingerprint"
 );
 
+const exactPriorityCall = appJs.indexOf("const exactPriorityQuestion = drawExactPriorityQuestion(allowDueReview)");
+const modeDrawCall = appJs.indexOf("const mode = drawDecisionMode()", exactPriorityCall);
+assert(
+  exactPriorityCall > appJs.indexOf("if (activeTarget)") && modeDrawCall > exactPriorityCall,
+  "Weak and due exact questions get a global priority lane before aggregate mode and context selection"
+);
+
 assert(
   indexHtml.includes("Choose the default action") &&
     indexHtml.includes('id="coachReasonLine"') &&
@@ -1115,7 +1184,8 @@ assert(
 
 assert(
   indexHtml.includes("Preflop Chart") &&
-    indexHtml.includes("100bb training assumption") &&
+    indexHtml.includes("100bb") &&
+    engineJs.includes("100bb training assumption") &&
     !indexHtml.includes("100-133bb") &&
     engine.CORPUS_METADATA.configuration.effectiveStackBb.status === "training-assumption" &&
     engine.CORPUS_METADATA.configuration.rakeModel === null &&
@@ -1149,10 +1219,10 @@ assert(
 );
 
 assert(
-  indexHtml.includes("./poto-evidence.js?v=20260712-poto-calibration-v5") &&
-    indexHtml.includes("./range-engine.js?v=20260712-poto-calibration-v5") &&
-    indexHtml.includes("./trainer-scheduler.js?v=20260712-poto-calibration-v5") &&
-    indexHtml.includes("./app.js?v=20260712-poto-calibration-v5") &&
+  indexHtml.includes("./poto-evidence.js?v=20260712-high-ev-v6") &&
+    indexHtml.includes("./range-engine.js?v=20260712-high-ev-v6") &&
+    indexHtml.includes("./trainer-scheduler.js?v=20260712-high-ev-v6") &&
+    indexHtml.includes("./app.js?v=20260712-high-ev-v6") &&
     !indexHtml.includes('<script src="./poto-evidence.js"></script>') &&
     !indexHtml.includes('<script src="./app.js"></script>') &&
     !indexHtml.includes('<script src="./range-engine.js"></script>') &&
