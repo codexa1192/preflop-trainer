@@ -58,6 +58,8 @@ The active action matrix remains `poto-live-1-3-provisional-v4`:
 - nine-handed, unstraddled;
 - 100bb is a **training assumption**, not a verified effective-stack range;
 - standard and large open-size classes are qualitative, not exact sizes;
+- small-blind first-in uses a raise-or-fold simplification; limping is not in
+  the active tree;
 - rake and promotional drop are disclosed but were not solver inputs;
 - no action EVs, numeric mixed frequencies, or reviewed regret bands exist;
 - the 35% first-in / 65% facing-open mix is curriculum emphasis, not observed

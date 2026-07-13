@@ -18,6 +18,7 @@
   const MIN_FIRST_REVIEW_RETENTION = 40;
   const CURRENT_STRATEGY_VERSION = "v4";
   const DAY_MS = 24 * 60 * 60 * 1000;
+  const INITIAL_RETRIEVAL_INTERVAL_MS = 6 * 60 * 60 * 1000;
   const FLUENT_RESPONSE_MS = 8000;
   const INVARIANT_RETENTION_CEILING = 0.12;
   const RELEARNING_STAGES = Object.freeze([
@@ -40,6 +41,7 @@
       correctStreak: 0,
       preferredStreak: 0,
       fluentPreferredStreak: 0,
+      qualifiedRetrievalStreak: 0,
       firstSeenAt: 0,
       lastSeenAt: 0,
       lastMissedAtMs: 0,
@@ -97,6 +99,15 @@
         : cleanCount(row.fluentPreferredStreak),
       record.preferredStreak
     );
+    // Older records tracked fast answers but not whether they were delayed.
+    // Restore them conservatively instead of inventing durable retrieval.
+    const hasQualifiedRetrieval = row.qualifiedRetrievalStreak !== undefined;
+    record.qualifiedRetrievalStreak = Math.min(
+      !hasQualifiedRetrieval
+        ? 0
+        : cleanCount(row.qualifiedRetrievalStreak),
+      record.preferred
+    );
     record.firstSeenAt = cleanTimestamp(row.firstSeenAt);
     record.lastSeenAt = cleanTimestamp(row.lastSeenAt);
     record.lastMissedAtMs = cleanTimestamp(row.lastMissedAtMs);
@@ -109,6 +120,18 @@
     record.nextReviewSequence = cleanCount(row.nextReviewSequence);
     record.relearningStage = Number.isInteger(row.relearningStage) && row.relearningStage >= 0 &&
       row.relearningStage < RELEARNING_STAGES.length ? row.relearningStage : -1;
+    if (!hasQualifiedRetrieval && record.relearningStage < 0 && legacyDeadlineNeedsRebase(record)) {
+      // Older builds let repeated same-session answers manufacture intervals as
+      // long as 30 days. Keep the evidence, but require a genuinely delayed
+      // retrieval before restoring a long deadline. Active relearning records
+      // are excluded so their queue deadline remains authoritative.
+      const priorInterval = record.intervalMs;
+      const observedAt = record.lastSeenAt || record.firstSeenAt ||
+        (record.dueAt && priorInterval ? Math.max(1, record.dueAt - priorInterval) : 0);
+      record.intervalMs = INITIAL_RETRIEVAL_INTERVAL_MS;
+      const conservativeDueAt = observedAt ? observedAt + INITIAL_RETRIEVAL_INTERVAL_MS : 1;
+      record.dueAt = record.dueAt ? Math.min(record.dueAt, conservativeDueAt) : conservativeDueAt;
+    }
     record.actionCounts = normalizeActionCounts(row.actionCounts, record.total);
     record.lastChosenAction = safeToken(row.lastChosenAction, 24);
     record.conceptKey = isSafeQuestionKey(row.conceptKey) ? row.conceptKey : "";
@@ -142,12 +165,27 @@
     const safeBucket = normalizeBucket(bucket);
     const missRate = safeBucket.total ? (safeBucket.total - safeBucket.correct) / safeBucket.total : 0;
     const acceptableRate = safeBucket.total ? (safeBucket.correct - safeBucket.preferred) / safeBucket.total : 0;
+    const preferredRate = safeBucket.total ? safeBucket.preferred / safeBucket.total : 0;
     const learningGap = missRate + acceptableRate * 0.25;
     const coverageBoost = safeBucket.total < 4 ? (4 - safeBucket.total) * 0.2 : 0;
     const confidence = Math.min(safeBucket.total / 10, 1);
     const weaknessBoost = safeBucket.total ? learningGap * (0.9 + confidence * 0.9) : 0.2;
+    // Strong aggregate evidence must reduce a mode/context below neutral or a
+    // mastered bucket keeps consuming its fixed curriculum share forever.
+    // The floor preserves sparse exploration and lets exact due reviews bypass
+    // this aggregate discount through their global priority lane.
+    const masteryDiscount = preferredRate * confidence * 0.8;
     const recentPenalty = isRecent ? 0.38 : 1;
-    return clampWeight((1 + coverageBoost + weaknessBoost) * recentPenalty, 0.18, 3.4);
+    return clampWeight(
+      (1 + coverageBoost + weaknessBoost) * (1 - masteryDiscount) * recentPenalty,
+      0.18,
+      3.4
+    );
+  }
+
+  function scoreBucketGroup(buckets) {
+    const rows = Array.isArray(buckets) && buckets.length ? buckets : [{}];
+    return rows.reduce((sum, bucket) => sum + scoreBucket(bucket, false), 0) / rows.length;
   }
 
   function allowsDueReview(args) {
@@ -314,15 +352,15 @@
     if (source.relearningStage >= 0 || unresolvedMiss) {
       return "RELEARNING";
     }
-    const fluentStreak = source.fluentPreferredStreak;
+    const qualifiedStreak = source.qualifiedRetrievalStreak;
     const invariant = invariantHint === undefined ? source.isInvariant : Boolean(invariantHint);
-    if (invariant && fluentStreak >= 2) {
+    if (invariant && qualifiedStreak >= 2) {
       return "STABLE";
     }
-    if (fluentStreak >= 6) {
+    if (qualifiedStreak >= 6) {
       return "MASTERED";
     }
-    if (fluentStreak >= 3) {
+    if (qualifiedStreak >= 3) {
       return "RETAINING";
     }
     return "LEARNING";
@@ -379,21 +417,36 @@
     if (resultVersion !== stats.strategyVersion) {
       invalidateStrategyVersion(stats, resultVersion);
     }
-    stats.sequence = cleanCount(stats.sequence) + 1;
+    const previousSequence = cleanCount(stats.sequence);
     const answeredAt = cleanTimestamp(result.timestamp || result.answeredAt) || Date.now();
     const conceptKey = isSafeQuestionKey(result.conceptKey) ? result.conceptKey : "";
     const previousExact = normalizeQuestionRecord(stats.byQuestion[result.questionKey]) || emptyRecord();
+    const previousConcept = conceptKey
+      ? (normalizeQuestionRecord(stats.byConcept[conceptKey]) || emptyRecord())
+      : null;
+    const previousQueueEntry = stats.relearningQueue.find((entry) => entry.questionKey === result.questionKey);
+    const queueWasDue = Boolean(
+      previousQueueEntry && isQueueEntryDue(previousQueueEntry, {
+        sequence: previousSequence,
+        now: answeredAt,
+        sessionId: result.sessionId
+      })
+    );
+    const exactWasDue = isRecordReviewDue(previousExact, previousSequence, answeredAt) || queueWasDue;
+    const conceptWasDue = previousConcept
+      ? isRecordReviewDue(previousConcept, previousSequence, answeredAt)
+      : false;
+    stats.sequence = previousSequence + 1;
     const previousReviewState = {
       relearningStage: previousExact.relearningStage,
       nextReviewSequence: previousExact.nextReviewSequence,
       dueAt: previousExact.dueAt
     };
     const missingQueueReviewDue = previousReviewState.relearningStage >= 0 &&
-      !stats.relearningQueue.some((entry) => entry.questionKey === result.questionKey) &&
-      isRecordReviewDue(previousExact, stats.sequence, answeredAt);
+      !previousQueueEntry && isMirroredQueueReviewDue(previousExact, previousSequence, answeredAt);
     const exact = updateLearningRecord(
       previousExact,
-      result,
+      { ...result, wasDue: exactWasDue },
       stats.sequence,
       answeredAt,
       conceptKey,
@@ -402,8 +455,8 @@
     stats.byQuestion[result.questionKey] = exact;
     if (conceptKey) {
       stats.byConcept[conceptKey] = updateLearningRecord(
-        normalizeQuestionRecord(stats.byConcept[conceptKey]) || emptyRecord(),
-        result,
+        previousConcept,
+        { ...result, wasDue: conceptWasDue },
         stats.sequence,
         answeredAt,
         conceptKey,
@@ -411,15 +464,15 @@
       );
     }
 
-    updateRelearningQueue(stats, result, answeredAt, conceptKey, missingQueueReviewDue);
+    updateRelearningQueue(stats, { ...result, wasDue: queueWasDue }, answeredAt, conceptKey, missingQueueReviewDue);
     const queueEntry = stats.relearningQueue.find((entry) => entry.questionKey === result.questionKey);
     if (queueEntry) {
       mirrorQueueState(exact, queueEntry);
-    } else if (previousReviewState.relearningStage >= 0 && !missingQueueReviewDue && Boolean(result.isPassing) &&
+    } else if (!previousQueueEntry && previousReviewState.relearningStage >= 0 &&
+      !missingQueueReviewDue && Boolean(result.isPassing) &&
       (result.isPreferred === undefined ? true : Boolean(result.isPreferred))) {
       exact.relearningStage = previousReviewState.relearningStage;
       exact.nextReviewSequence = previousReviewState.nextReviewSequence;
-      exact.dueAt = previousReviewState.dueAt;
     } else {
       mirrorQueueState(exact, null);
     }
@@ -435,6 +488,8 @@
     const isPassing = Boolean(result.isPassing);
     const isPreferred = isPassing && (result.isPreferred === undefined ? true : Boolean(result.isPreferred));
     const latency = cleanDuration(result.responseLatencyMs || result.latencyMs);
+    const isFluent = latency > 0 && latency <= FLUENT_RESPONSE_MS;
+    const wasDue = Boolean(result.wasDue);
     record.total += 1;
     record.lastSeen = sequence;
     record.firstSeenAt = record.firstSeenAt || answeredAt;
@@ -456,14 +511,31 @@
     if (isPreferred) {
       record.preferred += 1;
       record.preferredStreak += 1;
-      record.fluentPreferredStreak = latency > 0 && latency <= FLUENT_RESPONSE_MS
+      record.fluentPreferredStreak = isFluent
         ? record.fluentPreferredStreak + 1
         : 0;
-      record.intervalMs = masteryInterval(record.preferredStreak, record.isInvariant);
-      record.dueAt = answeredAt + record.intervalMs;
+      if (wasDue) {
+        if (isFluent) {
+          record.qualifiedRetrievalStreak += 1;
+          record.intervalMs = qualifiedRetrievalInterval(
+            record.qualifiedRetrievalStreak,
+            record.isInvariant
+          );
+        } else {
+          record.qualifiedRetrievalStreak = 0;
+          record.intervalMs = INITIAL_RETRIEVAL_INTERVAL_MS;
+        }
+        record.dueAt = answeredAt + record.intervalMs;
+      } else if (!record.dueAt && !record.nextReviewSequence) {
+        // Initial acquisition gets a short first delay. Extra answers before
+        // that deadline do not manufacture a longer retention interval.
+        record.intervalMs = INITIAL_RETRIEVAL_INTERVAL_MS;
+        record.dueAt = answeredAt + record.intervalMs;
+      }
     } else {
       record.preferredStreak = 0;
       record.fluentPreferredStreak = 0;
+      record.qualifiedRetrievalStreak = 0;
       record.intervalMs = 0;
       record.dueAt = 0;
     }
@@ -484,8 +556,8 @@
     return record;
   }
 
-  function masteryInterval(streak, isInvariant) {
-    const intervals = [6 * 60 * 60 * 1000, DAY_MS, 3 * DAY_MS, 7 * DAY_MS, 14 * DAY_MS, 30 * DAY_MS];
+  function qualifiedRetrievalInterval(streak, isInvariant) {
+    const intervals = [DAY_MS, 3 * DAY_MS, 7 * DAY_MS, 14 * DAY_MS, 30 * DAY_MS];
     const interval = intervals[Math.min(Math.max(streak, 1), intervals.length) - 1];
     return isInvariant && streak >= 2 ? Math.max(interval, 7 * DAY_MS) : interval;
   }
@@ -494,6 +566,8 @@
     const index = stats.relearningQueue.findIndex((entry) => entry.questionKey === result.questionKey);
     const isPreferred = Boolean(result.isPassing) &&
       (result.isPreferred === undefined ? true : Boolean(result.isPreferred));
+    const latency = cleanDuration(result.responseLatencyMs || result.latencyMs);
+    const isFluent = latency > 0 && latency <= FLUENT_RESPONSE_MS;
     if (!isPreferred) {
       const entry = makeQueueEntry(result, answeredAt, conceptKey, 0, stats.sequence);
       if (index === -1) {
@@ -505,25 +579,52 @@
     }
     if (index === -1) {
       const record = stats.byQuestion[result.questionKey];
-      if (missingQueueReviewDue && record && record.relearningStage >= 0 && record.relearningStage < RELEARNING_STAGES.length - 1) {
-        stats.relearningQueue.push(makeQueueEntry(
-          result,
-          answeredAt,
-          record.conceptKey || conceptKey,
-          record.relearningStage + 1,
-          stats.sequence
-        ));
+      if (missingQueueReviewDue && record && record.relearningStage >= 0) {
+        if (!isFluent) {
+          const retry = makeQueueEntry(
+            result,
+            answeredAt,
+            record.conceptKey || conceptKey,
+            record.relearningStage,
+            stats.sequence
+          );
+          retry.dueSequence = 0;
+          retry.dueAt = answeredAt + INITIAL_RETRIEVAL_INTERVAL_MS;
+          stats.relearningQueue.push(retry);
+        } else if (record.relearningStage < RELEARNING_STAGES.length - 1) {
+          stats.relearningQueue.push(makeQueueEntry(
+            result,
+            answeredAt,
+            record.conceptKey || conceptKey,
+            record.relearningStage + 1,
+            stats.sequence
+          ));
+        }
       }
       return;
     }
-    if (!isQueueEntryDue(stats.relearningQueue[index], {
-      sequence: stats.sequence,
-      now: answeredAt,
-      sessionId: result.sessionId
-    })) {
+    if (!result.wasDue) {
       return;
     }
     const current = stats.relearningQueue[index];
+    if (!isFluent) {
+      const retry = makeQueueEntry(
+        {
+          ...result,
+          sessionId: result.sessionId || current.sessionId,
+          relearningReason: current.reason,
+          reviewData: current.reviewData
+        },
+        answeredAt,
+        current.conceptKey || conceptKey,
+        current.stage,
+        stats.sequence
+      );
+      retry.dueSequence = 0;
+      retry.dueAt = answeredAt + INITIAL_RETRIEVAL_INTERVAL_MS;
+      stats.relearningQueue[index] = retry;
+      return;
+    }
     if (current.stage >= RELEARNING_STAGES.length - 1) {
       stats.relearningQueue.splice(index, 1);
       return;
@@ -606,6 +707,15 @@
       (record.nextReviewSequence && sequence >= record.nextReviewSequence) ||
       (record.dueAt && now >= record.dueAt)
     );
+  }
+
+  function isMirroredQueueReviewDue(record, sequence, now) {
+    if (!record || record.relearningStage < 0) return false;
+    // Persisted fields are authoritative because a slow answer can turn any
+    // queue stage into a time-based retry. If a sequence deadline exists, its
+    // later retention dueAt must not skip that queue deadline.
+    if (record.nextReviewSequence) return sequence >= record.nextReviewSequence;
+    return Boolean(record.dueAt && now >= record.dueAt);
   }
 
   function queueUrgency(entry, args) {
@@ -1081,6 +1191,12 @@
     return Number.isFinite(value) && value > 0 ? Math.min(Math.floor(value), 365 * DAY_MS) : 0;
   }
 
+  function legacyDeadlineNeedsRebase(record) {
+    if (record.intervalMs > INITIAL_RETRIEVAL_INTERVAL_MS) return true;
+    const observedAt = record.lastSeenAt || record.firstSeenAt;
+    return Boolean(observedAt && record.dueAt > observedAt + INITIAL_RETRIEVAL_INTERVAL_MS);
+  }
+
   function positiveWeight(value, fallback) {
     return Number.isFinite(value) && value > 0 ? value : fallback;
   }
@@ -1127,6 +1243,7 @@
     restoreAdaptiveStats,
     retentionTier,
     scoreBucket,
+    scoreBucketGroup,
     scoreHandOption,
     scoreLearningPriority,
     semanticNeighboringHands

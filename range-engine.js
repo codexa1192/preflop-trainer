@@ -707,7 +707,8 @@
     const profile = profileLabel(args && args.openerProfile);
     const size = sizeLabel(args && args.openSize);
     if (args && args.mode === MODES.RFI) {
-      return preset.assumptions + " · Hero " + heroBaselineLabel(resolveHeroBaseline(args)) + " RFI style";
+      return preset.assumptions + " · Hero " + heroBaselineLabel(resolveHeroBaseline(args)) + " RFI style" +
+        (args.position === "SB" ? " · raise-or-fold simplification; limps are not modeled" : "");
     }
     if (args && args.mode === MODES.VS_OPEN) {
       return preset.assumptions + " · " + size + " · " + profile + " opener";
@@ -1322,6 +1323,7 @@
     return String(text || "")
       .replace(/low-frequency/gi, "occasional")
       .replace(/with fold equity/gi, "when the opener is likely to fold")
+      .replace(/over-folding openers/gi, "openers who fold too often")
       .replace(/over-folding/gi, "folding too often")
       .replace(/over-folds/gi, "folds too often")
       .replace(/3-bet heavy/gi, "likely to re-raise")

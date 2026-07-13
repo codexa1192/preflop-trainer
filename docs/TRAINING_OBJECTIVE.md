@@ -34,6 +34,9 @@ information and can create misleading EV language.
 - An invariant premium decision retires rapidly and receives sparse maintenance.
 - Durable mastery requires successful delayed retrieval, not six immediate
   repetitions.
+- Only a fluent preferred answer that was actually due may advance the durable
+  retrieval streak or extend its interval. Early repeats preserve the existing
+  deadline; a slow due answer is scheduled again soon.
 - Exact due reviews are selected before aggregate mode and context sampling.
   Non-due personal weak spots may use a capped priority lane, but they must not
   bypass the explicit relearning intervals or recent-question cooldown.
@@ -43,6 +46,9 @@ information and can create misleading EV language.
 - Broader concept evidence is only a bounded prior for the first three exact
   observations. It must never dilute an unresolved exact miss.
 - The session may finish early when no high-value item is due.
+- Strong aggregate evidence must reduce a mastered mode or context below its
+  neutral curriculum weight, with a bounded exploration floor so coverage does
+  not collapse to zero.
 
 ## Required scheduler simulations
 
@@ -56,6 +62,10 @@ information and can create misleading EV language.
 - Concept transfer must taper across early exact observations and never hide an
   exact miss.
 - Mastered invariant premiums must remain below their retention ceiling.
+- Six immediate fluent answers must remain learning evidence and must not move
+  an item to a 30-day interval.
+- A mastered mode must lose most of its fixed curriculum share when another
+  mode remains unseen or weak, without displacing exact due reviews.
 - A strategy fingerprint change must invalidate affected exact mastery.
 - A synthetic costly weak spot must receive materially more practice within a
   50-question session than an equally frequent mastered spot.

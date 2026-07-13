@@ -623,6 +623,13 @@ a:focus-visible,
   justify-content: space-between;
   align-items: center;
   gap: 10px;
+  position: sticky;
+  top: -14px;
+  z-index: 3;
+  margin: -14px -14px 0;
+  padding: 14px 14px 8px;
+  background: #fffef9;
+  border-bottom: 1px solid #d8e2dc;
 }
 
 .modal-header h2 {
@@ -1064,7 +1071,7 @@ a:focus-visible,
             <p id="coachRangePlanLine" class="coach-copy"></p>
           </div>
           <div id="coachAdjustmentRow" class="coach-row hidden">
-            <span class="coach-label">Corpus switch</span>
+            <span class="coach-label">What changes</span>
             <p id="coachAdjustmentLine" class="coach-copy"></p>
           </div>
           <div class="coach-row">
@@ -1130,7 +1137,7 @@ a:focus-visible,
         <h2 id="settingsTitle">Settings</h2>
         <button id="closeSettingsBtn" class="ghost-btn" type="button">Done</button>
       </div>
-      <p class="modal-copy">Choose the exact situations to study. The fixed Hero baseline and Villain model are separate; these provisional ranges are not universal answers.</p>
+      <p class="modal-copy">Choose the situations to study. Position labels are specific, but this provisional corpus reuses some response templates; Villain profile and size change only explicitly tagged boundary hands.</p>
 
       <div class="setting-block">
         <h3>Poto room evidence</h3>
@@ -1168,7 +1175,7 @@ a:focus-visible,
       <div class="setting-block">
         <h3>Exact facing-open spots</h3>
         <details class="spot-details">
-          <summary id="spotSelectionSummary">Choose exact opener → Hero spots</summary>
+          <summary id="spotSelectionSummary">Choose opener → Hero spots</summary>
           <div id="vsSpotToggleGrid" class="spot-toggle-grid"></div>
         </details>
       </div>
@@ -1234,10 +1241,10 @@ a:focus-visible,
     </div>
   </div>
 
-<script src="./poto-evidence.js?v=20260712-high-ev-v6"></script>
-<script src="./range-engine.js?v=20260712-high-ev-v6"></script>
-<script src="./trainer-scheduler.js?v=20260712-high-ev-v6"></script>
-<script src="./app.js?v=20260712-high-ev-v6"></script>
+<script src="./poto-evidence.js?v=20260713-high-ev-v7"></script>
+<script src="./range-engine.js?v=20260713-high-ev-v7"></script>
+<script src="./trainer-scheduler.js?v=20260713-high-ev-v7"></script>
+<script src="./app.js?v=20260713-high-ev-v7"></script>
 <script id="bootWatchdog">
 window.setTimeout(function showBootFailureIfNeeded() {
   if (window.PotoTrainerReady) return;

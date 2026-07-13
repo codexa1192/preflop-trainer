@@ -224,8 +224,9 @@ assert.deepStrictEqual(
 assert(
   /model by selected opener/.test(elements.get("profileDefinitionLine").textContent) &&
     /UTG/.test(elements.get("profileDefinitionLine").textContent) &&
-    /HJ/.test(elements.get("profileDefinitionLine").textContent),
-  "The Villain definition summarizes every selected opener instead of presenting the first spot as universal"
+    /HJ/.test(elements.get("profileDefinitionLine").textContent) &&
+    /response changes only on explicitly tagged boundaries/i.test(elements.get("profileDefinitionLine").textContent),
+  "The Villain definition summarizes every selected opener and discloses the response-template boundary"
 );
 
 const visibleActions = currentActionButtons();
@@ -363,13 +364,55 @@ assert(elements.get("chartMatrix").children.length === 169, "Chart renders all 1
 const mixedChartCell = elements.get("chartMatrix").children.find((cell) => /reasonable alternative/.test(cell.attributes["aria-label"] || ""));
 assert(mixedChartCell, "Mixed chart cells expose their default and reasonable alternative to assistive technology");
 assert.strictEqual(elements.get("chartMatrix").children.filter((cell) => cell.tabIndex === 0).length, 1, "The hand chart exposes one keyboard tab stop instead of 169");
-mixedChartCell.click();
+const chartModeControl = elements.get("chartModeSelect");
+(chartModeControl.listeners.change || []).forEach((listener) => listener({ target: chartModeControl }));
+assert.strictEqual(
+  elements.get("chartMatrix").children.filter((cell) => cell.tabIndex === 0).length,
+  1,
+  "Changing a chart selector preserves exactly one keyboard tab stop"
+);
+const chartInitialTabStop = elements.get("chartMatrix").children.find((cell) => cell.tabIndex === 0);
+const selectorArrowTarget = elements.get("chartMatrix").children[1];
+(chartInitialTabStop.listeners.keydown || []).forEach((listener) => listener({ key: "ArrowRight", preventDefault: () => {} }));
+assert(
+  document.activeElement === selectorArrowTarget &&
+    elements.get("chartDetail").children[0].textContent.startsWith(selectorArrowTarget.textContent + " ·"),
+  "Arrow navigation remains synchronized after changing a chart selector"
+);
+elements.get("chartDetail").scrollIntoViewCalls = [];
+const refreshedMixedChartCell = elements.get("chartMatrix").children.find((cell) => /reasonable alternative/.test(cell.attributes["aria-label"] || ""));
+assert(refreshedMixedChartCell, "Selector changes preserve mixed chart cells");
+refreshedMixedChartCell.click();
 assert.strictEqual(elements.get("chartDetail").scrollIntoViewCalls.length, 1, "Selecting a chart hand reveals its coaching detail");
-const mixedCellIndex = elements.get("chartMatrix").children.indexOf(mixedChartCell);
+const mixedCellIndex = elements.get("chartMatrix").children.indexOf(refreshedMixedChartCell);
 const arrowTarget = elements.get("chartMatrix").children[Math.min(168, mixedCellIndex + 1)];
-(mixedChartCell.listeners.keydown || []).forEach((listener) => listener({ key: "ArrowRight", preventDefault: () => {} }));
+(refreshedMixedChartCell.listeners.keydown || []).forEach((listener) => listener({ key: "ArrowRight", preventDefault: () => {} }));
 assert.strictEqual(document.activeElement, arrowTarget, "Arrow keys move focus between chart hands");
 assert.strictEqual(arrowTarget.tabIndex, 0, "Arrow navigation moves the chart's single tab stop with focus");
+assert(
+  elements.get("chartDetail").children[0].textContent.startsWith(arrowTarget.textContent + " ·"),
+  "Arrow navigation keeps the visible chart explanation synchronized with the focused hand"
+);
+const selectChartValue = (id, value) => {
+  const control = elements.get(id);
+  control.value = value;
+  (control.listeners.change || []).forEach((listener) => listener({ target: control }));
+};
+selectChartValue("chartModeSelect", context.PotoRangeEngine.MODES.VS_OPEN);
+selectChartValue("chartOpenerSelect", "UTG");
+selectChartValue("chartHeroSelect", "UTG1");
+selectChartValue("chartProfileSelect", "TIGHT");
+selectChartValue("chartSizeSelect", "STANDARD");
+const sameDefaultDifferentMixCell = elements.get("chartMatrix").children.find((cell) => cell.textContent === "AQo");
+assert(sameDefaultDifferentMixCell, "Known same-default counterfactual fixture exists in the chart");
+sameDefaultDifferentMixCell.click();
+const fullPlanChangeLine = elements.get("chartDetail").children
+  .map((child) => child.textContent)
+  .find((text) => text.startsWith("What changes:"));
+assert(
+  /Villain model BALANCED → FOLD or 3-BET \(default FOLD\)\./.test(fullPlanChangeLine || ""),
+  "A counterfactual with the same default names the mixed action-plan change instead of repeating FOLD"
+);
 elements.get("closeChartBtn").click();
 assert.strictEqual(elements.get("appContent").inert, false, "Closing a modal restores the background");
 

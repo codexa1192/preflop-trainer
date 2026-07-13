@@ -1,5 +1,27 @@
 # Strategy corpus change record
 
+## Learning-efficiency correction — 2026-07-13
+
+The action corpus remains `poto-live-1-3-provisional-v4`; its action fingerprint
+and SHA-256 action snapshot are unchanged. This release corrects training and
+explanation behavior without changing a valid poker action:
+
+- only fluent answers retrieved after their scheduled delay advance durable
+  mastery or lengthen retention intervals;
+- early repetitions preserve the existing deadline, while slow due answers
+  return on a short interval;
+- mastered modes and contexts lose most of their fixed curriculum share while
+  retaining a bounded exploration floor;
+- boundary coaching reports the contrast hand's complete allowed-action plan
+  and shows the applicable adjustment;
+- keyboard movement in the chart keeps the visible explanation synchronized;
+- small-blind first-in is labeled as a raise-or-fold simplification because no
+  limp branch exists.
+
+Existing records restore conservatively with zero qualified delayed retrievals;
+mistakes and answer history remain available. No range can be described as
+solver-reviewed or rake-adjusted because of this training-only release.
+
 ## Training reliability correction — 2026-07-12
 
 The action corpus remains `poto-live-1-3-provisional-v4`; its action fingerprint
