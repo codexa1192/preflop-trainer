@@ -191,7 +191,7 @@
     });
 
     [el.chartModeSelect, el.chartHeroSelect, el.chartOpenerSelect, el.chartProfileSelect, el.chartSizeSelect].forEach((control) => {
-      control.addEventListener("change", renderChart);
+      control.addEventListener("change", () => renderChart());
     });
 
     el.resetStatsBtn.addEventListener("click", () => {
@@ -429,7 +429,7 @@
   }
 
   function updateSpotSelectionSummary() {
-    el.spotSelectionSummary.textContent = settings.enabledVsOpenSpots.length + " exact spots selected";
+    el.spotSelectionSummary.textContent = settings.enabledVsOpenSpots.length + " opener → Hero spots selected";
   }
 
   function renderProfileDefinition() {
@@ -445,13 +445,13 @@
       const definition = definitions[0];
       el.profileDefinitionLine.textContent = definition.label + " " + definition.positionLabel +
         " model: " + definition.pureOpenPercent + "% pure opens; up to " + definition.upperBoundOpenPercent +
-        "% including its qualitative mixed boundary. Provisional derived range, not observed Poto frequency.";
+        "% including its qualitative mixed boundary. This describes Villain's modeled range; Hero's response changes only on explicitly tagged boundaries. Provisional, not observed Poto frequency.";
       return;
     }
     el.profileDefinitionLine.textContent = definitions[0].label + " model by selected opener: " +
       definitions.map((definition) => definition.positionLabel + " " + definition.pureOpenPercent + "-" +
         definition.upperBoundOpenPercent + "%").join("; ") +
-      ". Each span runs from pure opens through the qualitative mixed boundary; these are provisional derived ranges, not observed Poto frequencies.";
+      ". Each span runs from pure opens through the qualitative mixed boundary. Hero's response changes only on explicitly tagged boundaries; these are provisional derived ranges, not observed Poto frequencies.";
   }
 
   function resetToLiveDefaults() {
@@ -827,7 +827,7 @@
     if (isAdaptiveDrill()) {
       const options = CURRICULUM_MIX.map((item) => ({
         id: item.id,
-        weight: item.weight * scheduler.scoreBucket(modeStatsBucket(item.id), false)
+        weight: item.weight * modeLearningWeight(item.id)
       }));
       return drawWeightedOption(options).id;
     }
@@ -969,31 +969,18 @@
     return options[options.length - 1];
   }
 
-  function modeStatsBucket(mode) {
-    if (mode === MODES.RFI) {
-      return aggregateContextBuckets(settings.enabledRfiPositions.map((position) =>
-        statsContextKeyForArgs({ mode: MODES.RFI, position })
-      ));
-    }
-    return aggregateContextBuckets(enabledVsOpenSpots().map((spot) => statsContextKeyForArgs({
-      mode: MODES.VS_OPEN,
-      openerPosition: spot.openerPosition,
-      heroPosition: spot.heroPosition
-    })));
-  }
-
-  function aggregateContextBuckets(keys) {
-    return keys.reduce((bucket, key) => {
-      const row = stats.byContext[key];
-      if (row && Number.isFinite(row.total) && Number.isFinite(row.correct)) {
-        bucket.total += Math.max(0, Math.floor(row.total));
-        bucket.correct += Math.max(0, Math.floor(row.correct));
-        bucket.preferred += Number.isFinite(row.preferred)
-          ? Math.max(0, Math.floor(row.preferred))
-          : 0;
-      }
-      return bucket;
-    }, { total: 0, correct: 0, preferred: 0 });
+  function modeLearningWeight(mode) {
+    const keys = mode === MODES.RFI
+      ? settings.enabledRfiPositions.map((position) =>
+        statsContextKeyForArgs({ mode: MODES.RFI, position }))
+      : enabledVsOpenSpots().map((spot) => statsContextKeyForArgs({
+        mode: MODES.VS_OPEN,
+        openerPosition: spot.openerPosition,
+        heroPosition: spot.heroPosition
+      }));
+    // Average context-level need instead of pooling raw counts. Otherwise one
+    // heavily practiced context can hide several enabled but unseen siblings.
+    return scheduler.scoreBucketGroup(keys.map((key) => stats.byContext[key]));
   }
 
   function enabledVsOpenSpots() {
@@ -1092,6 +1079,7 @@
 
     el.assumptionLine.textContent = engine.getAssumptionLabel({
       mode: question.mode,
+      position: question.position,
       heroBaseline: question.heroBaseline || settings.heroBaseline,
       openerProfile: question.openerProfile || settings.villainProfile,
       openSize: question.openSize || settings.openSize
@@ -1352,14 +1340,37 @@
 
     const corpusSwitch = Array.isArray(recommendation.counterfactuals) ? recommendation.counterfactuals[0] : null;
     const corpusSwitchText = corpusSwitch
-      ? counterfactualLabel(corpusSwitch) + " changes the provisional corpus default to " + engine.displayAction(corpusSwitch.primaryAction) + "."
+      ? counterfactualLabel(corpusSwitch) + " changes the provisional action plan to " + actionPlanCopy(corpusSwitch) + "."
       : "";
-    el.coachAdjustmentLine.textContent = corpusSwitchText;
-    el.coachAdjustmentRow.classList.toggle("hidden", !corpusSwitchText);
+    const coachAdjustment = coach.adjustment && !recommendation.frequency
+      ? coach.adjustment
+      : "";
+    const adjustmentText = corpusSwitchText || coachAdjustment;
+    el.coachAdjustmentLine.textContent = adjustmentText;
+    el.coachAdjustmentRow.classList.toggle("hidden", !adjustmentText);
     const contrast = recommendation.facts && recommendation.facts.nearestContrast;
     el.coachTakeawayLine.textContent = contrast
-      ? contrast.hand + " is the nearest provisional-corpus " + contrast.relationship + " contrast and defaults to " + engine.displayAction(contrast.primaryAction) + "."
+      ? contrastCopy(contrast)
       : (coach.takeaway || "Use this only under the assumptions shown above.");
+  }
+
+  function contrastCopy(contrast) {
+    const allowed = Array.isArray(contrast.allowedActions) && contrast.allowedActions.length
+      ? contrast.allowedActions
+      : [contrast.primaryAction];
+    const verb = allowed.length === 1 ? "is " : "may ";
+    return "Nearest " + contrast.relationship + " contrast: " + contrast.hand + " " +
+      verb + actionPlanCopy(contrast) + ".";
+  }
+
+  function actionPlanCopy(row) {
+    const allowed = Array.isArray(row.allowedActions) && row.allowedActions.length
+      ? row.allowedActions
+      : [row.primaryAction];
+    return allowed.length === 1
+      ? "pure " + engine.displayAction(row.primaryAction)
+      : allowed.map(engine.displayAction).join(" or ") +
+        " (default " + engine.displayAction(row.primaryAction) + ")";
   }
 
   function counterfactualLabel(row) {
@@ -1483,6 +1494,7 @@
         .join(", ");
       cell.setAttribute("aria-label", hand + " default " + engine.displayAction(recommendation.primaryAction) +
         (alternativeLabels ? "; reasonable alternative " + alternativeLabels : ""));
+      cell._recommendation = recommendation;
       const isInitialTabStop = focusHand ? focusHand === hand : cellIndex === 0;
       cell.tabIndex = isInitialTabStop ? 0 : -1;
       cell.setAttribute("tabindex", String(cell.tabIndex));
@@ -1573,14 +1585,17 @@
 
     const counterfactual = Array.isArray(recommendation.counterfactuals) ? recommendation.counterfactuals[0] : null;
     const adjustment = document.createElement("p");
-    adjustment.textContent = counterfactual
-      ? "Corpus switch: " + counterfactualLabel(counterfactual) + " → " + engine.displayAction(counterfactual.primaryAction)
+    const coachAdjustment = coach.adjustment && !recommendation.frequency
+      ? coach.adjustment
       : "";
+    adjustment.textContent = counterfactual
+      ? "What changes: " + counterfactualLabel(counterfactual) + " → " + actionPlanCopy(counterfactual) + "."
+      : (coachAdjustment ? "What changes: " + coachAdjustment : "");
 
     const takeaway = document.createElement("p");
     const contrast = recommendation.facts && recommendation.facts.nearestContrast;
     takeaway.textContent = contrast
-      ? "Contrast: " + contrast.hand + " defaults to " + engine.displayAction(contrast.primaryAction) + "."
+      ? contrastCopy(contrast)
       : (coach.takeaway ? "Remember: " + coach.takeaway : "");
 
     el.chartDetail.append(title, meta, why);
@@ -1617,6 +1632,9 @@
     if (!target || target === cells[index]) return;
     setChartRovingFocus(target);
     safeFocus(target);
+    if (target._recommendation) {
+      showChartDetail(target._recommendation, false);
+    }
   }
 
   function updateChartControlVisibility(mode) {
@@ -1630,6 +1648,7 @@
     if (mode === MODES.RFI) {
       el.chartAssumptionLine.textContent = engine.getAssumptionLabel({
         mode: MODES.RFI,
+        position: el.chartHeroSelect.value || "UTG",
         heroBaseline: profile
       }) + " · Hero " + engine.positionLabel(el.chartHeroSelect.value || "UTG");
       return;

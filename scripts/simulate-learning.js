@@ -6,6 +6,8 @@ const engine = require("../range-engine.js");
 const scheduler = require("../trainer-scheduler.js");
 
 const START = 1_720_000_000_000;
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
 const QUESTION = "VS_OPEN:MP3>SB:QJs:BALANCED:STANDARD";
 const CONCEPT = "VS_OPEN:MP3>SB:QJs:STANDARD";
 
@@ -195,6 +197,7 @@ const masteredConcept = {
   preferred: 10,
   preferredStreak: 6,
   fluentPreferredStreak: 6,
+  qualifiedRetrievalStreak: 6,
   isInvariant: true
 };
 const oneFluentExact = {
@@ -250,6 +253,7 @@ const threeExact = {
   preferred: 3,
   preferredStreak: 3,
   fluentPreferredStreak: 3,
+  qualifiedRetrievalStreak: 3,
   averageLatencyMs: 1500
 };
 assert.strictEqual(
@@ -302,6 +306,97 @@ assert.strictEqual(
   1,
   "Massed repeats before the due sequence cannot cancel spaced relearning"
 );
+const oneQuestionEarly = freshStats();
+answer(oneQuestionEarly, { isPassing: false, isPreferred: false, chosenAction: "CALL" });
+for (let index = 0; index < 7; index += 1) filler(oneQuestionEarly, index);
+answer(oneQuestionEarly);
+assert(
+  oneQuestionEarly.relearningQueue.length === 1 &&
+    oneQuestionEarly.relearningQueue[0].stage === 0 &&
+    oneQuestionEarly.relearningQueue[0].dueSequence === 9,
+  "An answer shown one question before the review deadline cannot advance the queue as it increments sequence"
+);
+const independentRetention = freshStats();
+answer(independentRetention, { isPassing: false, isPreferred: false, chosenAction: "CALL" });
+for (let index = 0; index < 8; index += 1) filler(independentRetention, index);
+answer(independentRetention);
+const pendingSecondReview = { ...independentRetention.relearningQueue[0] };
+const retentionDueAt = independentRetention.byQuestion[QUESTION].dueAt;
+assert.strictEqual(pendingSecondReview.stage, 1, "The isolated queue fixture reaches its +32 stage");
+assert.strictEqual(
+  scheduler.getNextRelearningQuestion(independentRetention, {
+    sequence: independentRetention.sequence,
+    now: retentionDueAt,
+    availableQuestionKeys: [QUESTION]
+  }),
+  null,
+  "A separate retention deadline does not make the +32 queue review due"
+);
+answer(independentRetention, { timestamp: retentionDueAt });
+assert(
+  independentRetention.relearningQueue[0].stage === pendingSecondReview.stage &&
+    independentRetention.relearningQueue[0].dueSequence === pendingSecondReview.dueSequence,
+  "A due retention answer cannot skip an independent +32 relearning review"
+);
+const prunedQueueRetention = freshStats();
+prunedQueueRetention.sequence = 10;
+prunedQueueRetention.byQuestion[QUESTION] = {
+  total: 2,
+  correct: 2,
+  preferred: 2,
+  preferredStreak: 2,
+  fluentPreferredStreak: 2,
+  qualifiedRetrievalStreak: 1,
+  intervalMs: DAY_MS,
+  dueAt: START,
+  relearningStage: 1,
+  nextReviewSequence: 42
+};
+answer(prunedQueueRetention, { timestamp: START });
+assert(
+  prunedQueueRetention.byQuestion[QUESTION].relearningStage === 1 &&
+    prunedQueueRetention.byQuestion[QUESTION].nextReviewSequence === 42 &&
+    prunedQueueRetention.byQuestion[QUESTION].qualifiedRetrievalStreak === 2 &&
+    prunedQueueRetention.byQuestion[QUESTION].dueAt === START + 3 * DAY_MS,
+  "A pruned future queue stage preserves its sequence deadline without discarding a new retention deadline"
+);
+const slowQueueReview = freshStats();
+answer(slowQueueReview, { isPassing: false, isPreferred: false, chosenAction: "CALL" });
+for (let index = 0; index < 8; index += 1) filler(slowQueueReview, index);
+const slowReviewAt = START + (slowQueueReview.sequence + 1) * 1000;
+answer(slowQueueReview, { timestamp: slowReviewAt, responseLatencyMs: 12_000 });
+assert(
+  slowQueueReview.relearningQueue[0].stage === 0 &&
+    slowQueueReview.relearningQueue[0].dueSequence === 0 &&
+    slowQueueReview.relearningQueue[0].dueAt === slowReviewAt + 6 * HOUR_MS,
+  "A slow due answer stays in relearning and receives the advertised six-hour retry"
+);
+assert.strictEqual(
+  scheduler.getNextRelearningQuestion(slowQueueReview, {
+    sequence: slowQueueReview.sequence,
+    now: slowReviewAt + 6 * HOUR_MS - 1,
+    availableQuestionKeys: [QUESTION]
+  }),
+  null,
+  "The slow-answer retry does not appear before six hours"
+);
+assert(
+  scheduler.getNextRelearningQuestion(slowQueueReview, {
+    sequence: slowQueueReview.sequence,
+    now: slowReviewAt + 6 * HOUR_MS,
+    availableQuestionKeys: [QUESTION]
+  }),
+  "The slow-answer retry becomes drawable at six hours"
+);
+const prunedSlowRetryAt = slowQueueReview.relearningQueue[0].dueAt;
+slowQueueReview.relearningQueue = [];
+answer(slowQueueReview, { timestamp: prunedSlowRetryAt, responseLatencyMs: 3000 });
+assert(
+  slowQueueReview.relearningQueue.length === 1 &&
+    slowQueueReview.relearningQueue[0].stage === 1 &&
+    slowQueueReview.relearningQueue[0].dueSequence === slowQueueReview.sequence + 32,
+  "A due time-based retry reconstructs and advances after queue-capacity pruning"
+);
 for (let index = 0; index < 7; index += 1) {
   filler(relearning, index);
 }
@@ -353,7 +448,6 @@ assert(scheduler.getNextRelearningQuestion(relearning, {
   now: START + relearning.sequence * 1000 + 24 * 60 * 60 * 1000,
   sessionId: "SESSION_2"
 }), "The delayed review becomes due after one day");
-
 const competingReviews = freshStats();
 competingReviews.sequence = 100;
 competingReviews.relearningQueue = [
@@ -490,13 +584,14 @@ assert(
   "An early repetition cannot advance or erase a capacity-pruned review before it is due"
 );
 
-answer(relearning, {
-  sessionId: "SESSION_2",
-  timestamp: START + relearning.sequence * 1000 + 24 * 60 * 60 * 1000
-});
+const finalReviewAt = relearning.relearningQueue[0].dueAt;
+answer(relearning, { sessionId: "SESSION_2", timestamp: finalReviewAt });
 assert.strictEqual(relearning.relearningQueue.length, 0, "A successful delayed review clears relearning");
 
 const qjsRecord = relearning.byQuestion[QUESTION];
+assert.strictEqual(qjsRecord.relearningStage, -1, "Completed relearning clears its mirrored queue stage");
+assert.strictEqual(qjsRecord.qualifiedRetrievalStreak, 3, "All three delayed fluent reviews count as qualified retrievals");
+assert.strictEqual(qjsRecord.dueAt, finalReviewAt + 7 * DAY_MS, "Final relearning preserves the new seven-day retention deadline");
 assert.strictEqual(qjsRecord.lapses, 1, "Misses persist as lapses");
 assert.strictEqual(qjsRecord.actionCounts.CALL, 1, "Wrong-action evidence is retained");
 assert.strictEqual(qjsRecord.actionCounts.FOLD, 3, "Preferred-action evidence is retained");
@@ -520,15 +615,61 @@ const syntheticPools = scheduler.classifyDecisionBoundaryRows([
 ]);
 assert(syntheticPools.core.some((row) => row.hand === "AA"), "AA is not a false edge against AKs/AKo");
 
-// Invariant premiums retire after two fluent preferred answers.
+// Fast answers only become durable evidence when they are retrieved after the
+// scheduled delay. Immediate repetitions cannot manufacture mastery.
+const massedAcquisition = freshStats();
+for (let attempt = 0; attempt < 6; attempt += 1) {
+  answer(massedAcquisition, { timestamp: START + attempt * 1000 });
+}
+const massedRecord = massedAcquisition.byQuestion[QUESTION];
+assert.strictEqual(massedRecord.qualifiedRetrievalStreak, 0, "Immediate repetitions do not count as delayed retrieval");
+assert.strictEqual(scheduler.retentionTier(massedRecord), "LEARNING", "Immediate repetitions cannot produce mastery");
+assert.strictEqual(
+  massedRecord.dueAt,
+  START + 6 * 60 * 60 * 1000,
+  "Early repetitions preserve the original first-review deadline"
+);
+
+const delayedAcquisition = freshStats();
+answer(delayedAcquisition, { timestamp: START });
+const firstRetentionDue = delayedAcquisition.byQuestion[QUESTION].dueAt;
+answer(delayedAcquisition, { timestamp: firstRetentionDue });
+assert.strictEqual(
+  delayedAcquisition.byQuestion[QUESTION].qualifiedRetrievalStreak,
+  1,
+  "A fluent answer after the scheduled delay advances durable retrieval"
+);
+assert.strictEqual(
+  delayedAcquisition.byQuestion[QUESTION].dueAt,
+  firstRetentionDue + 24 * 60 * 60 * 1000,
+  "The first qualified retrieval advances to a one-day interval"
+);
+
+const slowDelayedAcquisition = freshStats();
+answer(slowDelayedAcquisition, { timestamp: START });
+const slowRetentionDue = slowDelayedAcquisition.byQuestion[QUESTION].dueAt;
+answer(slowDelayedAcquisition, { timestamp: slowRetentionDue, responseLatencyMs: 12_000 });
+assert.strictEqual(
+  slowDelayedAcquisition.byQuestion[QUESTION].qualifiedRetrievalStreak,
+  0,
+  "A slow due answer does not advance fluent retrieval mastery"
+);
+assert.strictEqual(
+  slowDelayedAcquisition.byQuestion[QUESTION].dueAt,
+  slowRetentionDue + 6 * 60 * 60 * 1000,
+  "A slow due answer is scheduled again soon"
+);
+
+// Invariant premiums retire after two fluent, delayed retrievals.
 const invariant = freshStats();
-for (let attempt = 0; attempt < 3; attempt += 1) {
+const invariantTimes = [START, START + 6 * 60 * 60 * 1000, START + 30 * 60 * 60 * 1000];
+for (let attempt = 0; attempt < invariantTimes.length; attempt += 1) {
   scheduler.recordQuestionResult(invariant, {
     questionKey: "RFI:BTN:AA:BALANCED:NA",
     conceptKey: "RFI:BTN:AA",
     contextKey: "RFI:BTN",
     hand: "AA",
-    timestamp: START + attempt * 1000,
+    timestamp: invariantTimes[attempt],
     responseLatencyMs: 1200,
     chosenAction: "OPEN",
     isPassing: true,
@@ -537,7 +678,11 @@ for (let attempt = 0; attempt < 3; attempt += 1) {
   });
 }
 const invariantRecord = invariant.byQuestion["RFI:BTN:AA:BALANCED:NA"];
-assert.strictEqual(scheduler.retentionTier(invariantRecord), "STABLE", "Fluent invariant decisions reach stable retention");
+assert.strictEqual(
+  scheduler.retentionTier(invariantRecord),
+  "STABLE",
+  "Two fluent delayed retrievals move an invariant decision to stable retention"
+);
 assert(
   scheduler.scoreHandOption({ record: invariantRecord, sequence: invariant.sequence, now: START + 10_000 }) <=
     scheduler.INVARIANT_RETENTION_CEILING,
@@ -609,6 +754,7 @@ const drawCandidates = [
         correctStreak: 8,
         preferredStreak: 8,
         fluentPreferredStreak: 8,
+        qualifiedRetrievalStreak: 8,
         dueAt: START + 7 * 24 * 60 * 60 * 1000
       },
       sequence: 50,
@@ -757,10 +903,66 @@ assert.strictEqual(
   0,
   "Pre-latency records do not invent fluent recall during migration"
 );
+assert.strictEqual(
+  legacyInvariant.qualifiedRetrievalStreak,
+  0,
+  "Pre-qualified-retrieval records do not invent delayed mastery during migration"
+);
 assert.notStrictEqual(
   scheduler.retentionTier(legacyInvariant),
   "STABLE",
   "Legacy correctness alone cannot retire an invariant item"
+);
+
+const legacyLongDeadline = freshStats();
+scheduler.restoreAdaptiveStats(legacyLongDeadline, {
+  strategyVersion: scheduler.CURRENT_STRATEGY_VERSION,
+  byQuestion: {
+    [QUESTION]: {
+      total: 6,
+      correct: 6,
+      preferred: 6,
+      preferredStreak: 6,
+      fluentPreferredStreak: 6,
+      firstSeenAt: START,
+      lastSeenAt: START,
+      intervalMs: 30 * DAY_MS,
+      dueAt: START + 30 * DAY_MS
+    }
+  }
+});
+const rebasedLegacy = legacyLongDeadline.byQuestion[QUESTION];
+assert.strictEqual(rebasedLegacy.qualifiedRetrievalStreak, 0, "Legacy massed answers restore without qualified recall");
+assert.strictEqual(rebasedLegacy.intervalMs, 6 * HOUR_MS, "Legacy false mastery is rebased to the initial interval");
+assert.strictEqual(rebasedLegacy.dueAt, START + 6 * HOUR_MS, "Legacy false mastery becomes promptly reviewable");
+
+const persistedQualified = freshStats();
+scheduler.restoreAdaptiveStats(persistedQualified, {
+  strategyVersion: scheduler.CURRENT_STRATEGY_VERSION,
+  byQuestion: {
+    [QUESTION]: {
+      total: 8,
+      correct: 8,
+      preferred: 8,
+      preferredStreak: 8,
+      fluentPreferredStreak: 8,
+      qualifiedRetrievalStreak: 3,
+      firstSeenAt: START,
+      lastSeenAt: START + 4 * DAY_MS,
+      intervalMs: 7 * DAY_MS,
+      dueAt: START + 11 * DAY_MS
+    }
+  }
+});
+assert.strictEqual(
+  persistedQualified.byQuestion[QUESTION].qualifiedRetrievalStreak,
+  3,
+  "A genuine qualified retrieval streak survives persistence restore"
+);
+assert.strictEqual(
+  persistedQualified.byQuestion[QUESTION].dueAt,
+  START + 11 * DAY_MS,
+  "A genuine qualified retrieval deadline survives persistence restore"
 );
 
 console.log("Learning scheduler v4 simulation passed.");

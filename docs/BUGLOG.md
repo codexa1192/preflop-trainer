@@ -1,5 +1,28 @@
 # Bug log
 
+## 2026-07-13 - Immediate repeats could create false long-term mastery
+
+**Issue:** Six fast answers inside one short session could create a 30-day
+interval, while already-mastered modes and contexts retained too much fixed
+study share. Chart arrow navigation also left the explanation on the previously
+focused hand.
+
+**Root Cause:** Retention used a fluent-answer streak without verifying that the
+item was due; aggregate bucket scoring never fell below neutral; and keyboard
+navigation moved focus without rerendering detail.
+
+**Fix:** Track qualified delayed retrieval separately, extend intervals only on
+fluent due answers, retry slow due answers soon, discount mastered contexts
+without hiding unseen siblings, and synchronize chart detail on arrow movement.
+Boundary and counterfactual copy now preserve the full allowed-action plan,
+small-blind first-in discloses its missing limp branch, and long mobile modals
+keep their close control visible while scrolling.
+
+**Test:** Deterministic simulations cover early, due, and slow retrievals plus
+mastered-bucket discounting. The app smoke test verifies chart focus and visible
+detail move together. Strategy fingerprint and action snapshot checks remain
+unchanged.
+
 ## 2026-07-12 - Training runtime could distort priority or teach unsupported spots
 
 **Issue:** Unsupported position/mode inputs could become gradeable advice,

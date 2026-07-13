@@ -520,7 +520,7 @@ const adversarialAdaptiveOptions = challengeOptions({
   weight: option.weight * scheduler.scoreHandOption({
     record: option.hand === "AQo"
       ? { total: 6, correct: 0, preferred: 0, lastSeen: 1, lastMissedAt: 6, correctStreak: 0, preferredStreak: 0 }
-      : { total: 6, correct: 6, preferred: 6, lastSeen: 5, lastMissedAt: 0, correctStreak: 6, preferredStreak: 6, fluentPreferredStreak: 6, dueAt: Date.now() + 86400000 },
+      : { total: 6, correct: 6, preferred: 6, lastSeen: 5, lastMissedAt: 0, correctStreak: 6, preferredStreak: 6, fluentPreferredStreak: 6, qualifiedRetrievalStreak: 6, dueAt: Date.now() + 86400000 },
     sequence: 20
   })
 }));
@@ -745,7 +745,7 @@ engine.OPENER_PROFILES.forEach(({ id: profile }) => {
           !recommendation.coach.reason || !recommendation.coach.adjustment || !recommendation.coach.takeaway ||
           !recommendation.coach.actionNotes ||
           recommendation.allowedActions.some((action) => !recommendation.coach.actionNotes[action]) ||
-          /fold equity|table texture/i.test(Object.values(recommendation.coach).join(" ")) ||
+          /fold equity|table texture|folding too often openers/i.test(Object.values(recommendation.coach).join(" ")) ||
           secondaryNoteFailure || pairTakeawayFailure) {
         coachFailures += 1;
       }
@@ -781,7 +781,7 @@ engine.OPENER_PROFILES.forEach(({ id: profile }) => {
             !recommendation.coach.reason || !recommendation.coach.adjustment || !recommendation.coach.takeaway ||
             !recommendation.coach.actionNotes ||
             recommendation.allowedActions.some((action) => !recommendation.coach.actionNotes[action]) ||
-            /fold equity|table texture/i.test(Object.values(recommendation.coach).join(" ")) ||
+            /fold equity|table texture|folding too often openers/i.test(Object.values(recommendation.coach).join(" ")) ||
             selectedAssumptionContradiction || secondaryNoteFailure || pairTakeawayFailure) {
           coachFailures += 1;
         }
@@ -866,9 +866,19 @@ const weakBucketWeight = scheduler.scoreBucket({ total: 10, correct: 4, preferre
 const masteredBucketWeight = scheduler.scoreBucket({ total: 10, correct: 10, preferred: 10 }, false);
 const newBucketWeight = scheduler.scoreBucket({ total: 0, correct: 0 }, false);
 const recentWeakBucketWeight = scheduler.scoreBucket({ total: 10, correct: 4, preferred: 2 }, true);
+const partlyCoveredModeWeight = scheduler.scoreBucketGroup([
+  { total: 10, correct: 10, preferred: 10 },
+  { total: 0, correct: 0, preferred: 0 },
+  { total: 0, correct: 0, preferred: 0 },
+  { total: 0, correct: 0, preferred: 0 }
+]);
 assert(
-  weakBucketWeight > masteredBucketWeight && newBucketWeight > masteredBucketWeight,
-  "Adaptive scheduler prioritizes weak buckets and under-tested coverage over mastered buckets"
+  weakBucketWeight > masteredBucketWeight && newBucketWeight > masteredBucketWeight && masteredBucketWeight < 0.5,
+  "Adaptive scheduler sharply discounts mastered buckets while prioritizing weak and under-tested coverage"
+);
+assert(
+  partlyCoveredModeWeight > 1,
+  "One mastered context cannot hide three enabled but unseen contexts at mode selection"
 );
 assert(
   recentWeakBucketWeight < weakBucketWeight,
@@ -880,7 +890,7 @@ const weakHandWeight = scheduler.scoreHandOption({
   sequence: 20
 });
 const masteredHandWeight = scheduler.scoreHandOption({
-  record: { total: 4, correct: 4, preferred: 4, lastSeen: 19, lastMissedAt: 0, correctStreak: 4, preferredStreak: 4 },
+  record: { total: 4, correct: 4, preferred: 4, lastSeen: 19, lastMissedAt: 0, correctStreak: 4, preferredStreak: 4, qualifiedRetrievalStreak: 4 },
   sequence: 20
 });
 const recentWeakHandWeight = scheduler.scoreHandOption({
@@ -1210,6 +1220,25 @@ assert(
 );
 
 assert(
+  /raise-or-fold simplification/i.test(engine.getAssumptionLabel({
+    mode: engine.MODES.RFI,
+    position: "SB",
+    heroBaseline: "BALANCED"
+  })) &&
+    /limps are not modeled/i.test(engine.getAssumptionLabel({
+      mode: engine.MODES.RFI,
+      position: "SB",
+      heroBaseline: "BALANCED"
+    })) &&
+    !/limps are not modeled/i.test(engine.getAssumptionLabel({
+      mode: engine.MODES.RFI,
+      position: "BTN",
+      heroBaseline: "BALANCED"
+    })),
+  "Small-blind first-in assumptions disclose that the active tree omits limping"
+);
+
+assert(
   engineJs.includes("chart-three-bet") === false &&
     indexHtml.includes("chart-three-bet") &&
     !indexHtml.includes("dot-four-bet\"></span>4-bet") &&
@@ -1219,10 +1248,10 @@ assert(
 );
 
 assert(
-  indexHtml.includes("./poto-evidence.js?v=20260712-high-ev-v6") &&
-    indexHtml.includes("./range-engine.js?v=20260712-high-ev-v6") &&
-    indexHtml.includes("./trainer-scheduler.js?v=20260712-high-ev-v6") &&
-    indexHtml.includes("./app.js?v=20260712-high-ev-v6") &&
+  indexHtml.includes("./poto-evidence.js?v=20260713-high-ev-v7") &&
+    indexHtml.includes("./range-engine.js?v=20260713-high-ev-v7") &&
+    indexHtml.includes("./trainer-scheduler.js?v=20260713-high-ev-v7") &&
+    indexHtml.includes("./app.js?v=20260713-high-ev-v7") &&
     !indexHtml.includes('<script src="./poto-evidence.js"></script>') &&
     !indexHtml.includes('<script src="./app.js"></script>') &&
     !indexHtml.includes('<script src="./range-engine.js"></script>') &&

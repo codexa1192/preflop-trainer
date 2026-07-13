@@ -52,9 +52,13 @@ mistakes, semantic poker boundaries, combination frequency, and under-practiced
 concepts. A normal session caps due reviews at 75% so a backlog still leaves
 five questions for new coverage; an explicitly targeted leak drill can remain
 review-only. A miss is scheduled again after roughly 8 questions, 32 questions,
-and on a later day. Stable invariant premiums are retired aggressively instead
-of consuming a fixed answer-category quota. A reasonable secondary action is
-accepted, but it does not count as full default-action mastery.
+and on a later day. Only a fluent answer after its scheduled delay advances
+durable mastery; early repeats keep the original deadline, and a slow due answer
+returns soon. Mastered modes and contexts are discounted below neutral while a
+small exploration floor remains. Stable invariant premiums are retired only
+after delayed retrieval instead of consuming a fixed answer-category quota. A
+reasonable secondary action is accepted, but it does not count as full
+default-action mastery.
 
 Stats use the v4 local schema and record the chosen action, response latency,
 timestamp, lapses, exact question/context, concept, due state, and strategy
@@ -73,11 +77,13 @@ Potawatomi opportunity frequency. Room-frequency and regret weights remain
 neutral until they have enough observed or reviewed evidence.
 
 Hero's first-in baseline is separate from the Villain opening model. The
-settings expose exact opener-to-Hero spots, and the Villain definition reports
+settings expose selected opener-to-Hero spots, and the Villain definition reports
 a position-specific combination range instead of treating “tight” or “loose”
 as self-explanatory. Feedback shows only counterfactuals actually queried from
-the corpus; generic “change when” claims are omitted when no supported control
-changes the recommendation.
+the corpus, shows the complete allowed-action plan for a nearby boundary
+contrast, and exposes the applicable adjustment rather than reducing mixed
+hands to one action label. Small-blind first-in study is explicitly labeled as
+a raise-or-fold simplification because the corpus does not model limping.
 
 Before treating the baseline as room-specific, use the
 [Poto calibration checklist](docs/POTO_CALIBRATION.md). The ranking objective
