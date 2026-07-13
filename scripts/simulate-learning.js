@@ -122,6 +122,142 @@ assert(
   "Cold-start focused study keeps at least 85% challenge mass per context and 88% across the default mix"
 );
 
+const exactPriorityFixtures = [
+  {
+    questionKey: "RFI:BTN:DUE:BALANCED:NA",
+    record: { total: 4, correct: 4, preferred: 4, dueAt: START - 1, preferredStreak: 4 },
+    unresolved: false
+  },
+  {
+    questionKey: "RFI:CO:WEAK:BALANCED:NA",
+    record: { total: 3, correct: 1, preferred: 1, lastMissedAt: 2, preferredStreak: 0, lapses: 2 },
+    unresolved: true
+  },
+  {
+    questionKey: "RFI:SB:FRESH:BALANCED:NA",
+    record: { total: 2, correct: 2, preferred: 2, dueAt: START + 100_000, preferredStreak: 2 },
+    unresolved: false
+  }
+];
+const exactPriority = scheduler.buildExactPriorityOptions(exactPriorityFixtures, {
+  sequence: 10,
+  now: START
+});
+assert(
+  exactPriority.some((row) => row.questionKey.includes(":DUE:") && row.dueNow),
+  "A non-queue retention review can win before mode and context selection when its exact due time arrives"
+);
+assert(
+  exactPriority.some((row) => row.questionKey.includes(":WEAK:") && !row.dueNow),
+  "A weak exact decision can enter the global adaptive-priority lane"
+);
+assert(
+  !exactPriority.some((row) => row.questionKey.includes(":FRESH:")),
+  "A passing exact decision that is not due does not displace ordinary coverage"
+);
+assert(
+  !scheduler.buildExactPriorityOptions(exactPriorityFixtures, {
+    sequence: 10,
+    now: START,
+    recentQuestionKeys: ["RFI:CO:WEAK:BALANCED:NA"]
+  }).some((row) => row.questionKey.includes(":WEAK:")),
+  "A non-due weak exact decision still respects the recent-question cooldown"
+);
+assert(
+  !scheduler.buildExactPriorityOptions(exactPriorityFixtures, {
+    sequence: 10,
+    now: START,
+    excludedQuestionKeys: ["RFI:CO:WEAK:BALANCED:NA"]
+  }).some((row) => row.questionKey.includes(":WEAK:")),
+  "An exact decision already in the spaced queue cannot bypass its scheduled interval"
+);
+
+let boundedDueDraws = 0;
+for (let answered = 0; answered < 20; answered += 1) {
+  if (scheduler.allowsDueReview({ answered, dueDrawn: boundedDueDraws, maxShare: 0.75 })) {
+    boundedDueDraws += 1;
+  }
+}
+assert.strictEqual(boundedDueDraws, 15, "A focus session reserves five of twenty slots for new coverage during a due backlog");
+assert(
+  Array.from({ length: 10 }, (_value, answered) => scheduler.allowsDueReview({
+    sessionKind: "TARGETED",
+    answered,
+    dueDrawn: answered,
+    maxShare: 0.75
+  })).every(Boolean),
+  "An explicitly targeted review session can spend every slot on its selected leak"
+);
+
+const masteredConcept = {
+  total: 10,
+  correct: 10,
+  preferred: 10,
+  preferredStreak: 6,
+  fluentPreferredStreak: 6,
+  isInvariant: true
+};
+const oneFluentExact = {
+  total: 1,
+  correct: 1,
+  preferred: 1,
+  preferredStreak: 1,
+  fluentPreferredStreak: 1,
+  averageLatencyMs: 1500
+};
+const conceptOnlyScore = scheduler.scoreHandOption({
+  conceptRecord: masteredConcept,
+  sequence: 10,
+  now: START,
+  isInvariant: true
+});
+const exactOnlyScore = scheduler.scoreHandOption({
+  record: oneFluentExact,
+  sequence: 10,
+  now: START,
+  isInvariant: true
+});
+const blendedScore = scheduler.scoreHandOption({
+  record: oneFluentExact,
+  conceptRecord: masteredConcept,
+  sequence: 10,
+  now: START,
+  isInvariant: true
+});
+assert(
+  blendedScore > conceptOnlyScore && blendedScore < exactOnlyScore,
+  "The first exact success blends with broader concept evidence instead of causing an all-or-nothing priority jump"
+);
+
+const exactMiss = {
+  total: 1,
+  correct: 0,
+  preferred: 0,
+  lastMissedAt: 1,
+  preferredStreak: 0,
+  relearningStage: 0,
+  lapses: 1
+};
+assert.strictEqual(
+  scheduler.scoreHandOption({ record: exactMiss, conceptRecord: masteredConcept, sequence: 10, now: START }),
+  scheduler.scoreHandOption({ record: exactMiss, sequence: 10, now: START }),
+  "Concept transfer can never wash out an unresolved exact miss"
+);
+
+const threeExact = {
+  total: 3,
+  correct: 3,
+  preferred: 3,
+  preferredStreak: 3,
+  fluentPreferredStreak: 3,
+  averageLatencyMs: 1500
+};
+assert.strictEqual(
+  scheduler.scoreHandOption({ record: threeExact, conceptRecord: masteredConcept, sequence: 10, now: START }),
+  scheduler.scoreHandOption({ record: threeExact, sequence: 10, now: START }),
+  "After three exact observations, exact evidence fully replaces the concept prior"
+);
+
 // A miss must become an exact-node review after eight intervening questions.
 const relearning = freshStats();
 answer(relearning, {
@@ -217,6 +353,143 @@ assert(scheduler.getNextRelearningQuestion(relearning, {
   now: START + relearning.sequence * 1000 + 24 * 60 * 60 * 1000,
   sessionId: "SESSION_2"
 }), "The delayed review becomes due after one day");
+
+const competingReviews = freshStats();
+competingReviews.sequence = 100;
+competingReviews.relearningQueue = [
+  {
+    questionKey: "RFI:BTN:Q9s:BALANCED:NA",
+    conceptKey: "RFI:BTN:Q9s:OPEN",
+    stage: 0,
+    dueSequence: 95,
+    dueAt: 0,
+    enqueuedAt: START,
+    reason: "MISSED",
+    sessionId: "SESSION_1",
+    reviewData: { mode: "RFI", position: "BTN", hand: "Q9s", heroBaseline: "BALANCED" }
+  },
+  {
+    questionKey: "RFI:CO:JTs:BALANCED:NA",
+    conceptKey: "RFI:CO:JTs:OPEN",
+    stage: 2,
+    dueSequence: 0,
+    dueAt: START - 60 * 60 * 1000,
+    enqueuedAt: START - 24 * 60 * 60 * 1000,
+    reason: "MISSED",
+    sessionId: "SESSION_0",
+    reviewData: { mode: "RFI", position: "CO", hand: "JTs", heroBaseline: "BALANCED" }
+  }
+];
+const orderedReviews = scheduler.getDueRelearning(competingReviews, {
+  sequence: competingReviews.sequence,
+  now: START
+});
+assert.strictEqual(
+  orderedReviews[0].questionKey,
+  "RFI:CO:JTs:BALANCED:NA",
+  "A due delayed-retrieval review is not starved by a first review already five questions overdue"
+);
+
+const boundedQueue = freshStats();
+boundedQueue.relearningQueue = Array.from({ length: 199 }, (_value, index) => ({
+  questionKey: `RFI:BTN:Q${index}:BALANCED:NA`,
+  conceptKey: "",
+  stage: 0,
+  dueSequence: index + 1,
+  dueAt: 0,
+  enqueuedAt: START + index,
+  reason: "MISSED",
+  sessionId: "SESSION_1",
+  reviewData: {}
+})).concat([
+  {
+    questionKey: "RFI:CO:DELAYEDA:BALANCED:NA",
+    conceptKey: "",
+    stage: 2,
+    dueSequence: 0,
+    dueAt: START + 1000,
+    enqueuedAt: START - 1000,
+    reason: "MISSED",
+    sessionId: "SESSION_1",
+    reviewData: {}
+  },
+  {
+    questionKey: "RFI:CO:DELAYEDB:BALANCED:NA",
+    conceptKey: "",
+    stage: 2,
+    dueSequence: 0,
+    dueAt: START + 2000,
+    enqueuedAt: START - 2000,
+    reason: "MISSED",
+    sessionId: "SESSION_1",
+    reviewData: {}
+  }
+]);
+scheduler.ensureAdaptiveStats(boundedQueue);
+assert(
+  boundedQueue.relearningQueue.some((entry) => entry.questionKey.includes("DELAYEDA")) &&
+    boundedQueue.relearningQueue.some((entry) => entry.questionKey.includes("DELAYEDB")),
+  "Queue pruning preserves every later-stage delayed review before dropping early-stage items"
+);
+
+const mixedCapacityQueue = freshStats();
+mixedCapacityQueue.relearningQueue = Array.from({ length: 200 }, (_value, index) => ({
+  questionKey: `RFI:CO:DURABLE${index}:BALANCED:NA`,
+  stage: 2,
+  enqueuedAt: START + index,
+  dueAt: START + 100_000
+})).concat(Array.from({ length: 50 }, (_value, index) => ({
+  questionKey: `RFI:BTN:FIRST${index}:BALANCED:NA`,
+  stage: 0,
+  enqueuedAt: START + 1000 + index,
+  dueSequence: index + 1
+})));
+scheduler.ensureAdaptiveStats(mixedCapacityQueue);
+assert.strictEqual(
+  mixedCapacityQueue.relearningQueue.filter((entry) => entry.stage === 0).length,
+  40,
+  "Queue pruning reserves a bounded pool of recent first reviews alongside durable retrieval"
+);
+
+const reconstructPrunedReview = freshStats();
+reconstructPrunedReview.sequence = 20;
+reconstructPrunedReview.byQuestion[QUESTION] = {
+  total: 1,
+  correct: 0,
+  preferred: 0,
+  lastMissedAt: 1,
+  preferredStreak: 0,
+  relearningStage: 0,
+  nextReviewSequence: 9,
+  conceptKey: CONCEPT
+};
+answer(reconstructPrunedReview, { timestamp: START + 21_000 });
+assert(
+  reconstructPrunedReview.relearningQueue.length === 1 &&
+    reconstructPrunedReview.relearningQueue[0].stage === 1 &&
+    reconstructPrunedReview.relearningQueue[0].dueSequence === reconstructPrunedReview.sequence + 32,
+  "Answering a due review whose queue entry was capacity-pruned reconstructs the next spacing stage"
+);
+
+const preserveEarlyPrunedReview = freshStats();
+preserveEarlyPrunedReview.byQuestion[QUESTION] = {
+  total: 1,
+  correct: 0,
+  preferred: 0,
+  lastMissedAt: 1,
+  preferredStreak: 0,
+  relearningStage: 0,
+  nextReviewSequence: 100,
+  conceptKey: CONCEPT
+};
+answer(preserveEarlyPrunedReview, { timestamp: START + 1000 });
+assert(
+  preserveEarlyPrunedReview.relearningQueue.length === 0 &&
+    preserveEarlyPrunedReview.byQuestion[QUESTION].relearningStage === 0 &&
+    preserveEarlyPrunedReview.byQuestion[QUESTION].nextReviewSequence === 100,
+  "An early repetition cannot advance or erase a capacity-pruned review before it is due"
+);
+
 answer(relearning, {
   sessionId: "SESSION_2",
   timestamp: START + relearning.sequence * 1000 + 24 * 60 * 60 * 1000

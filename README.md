@@ -49,7 +49,9 @@ stale mastery.
 The default study loop is a focused 20-decision session designed to take about
 10 minutes when explanations are read. It prioritizes due relearning, exact
 mistakes, semantic poker boundaries, combination frequency, and under-practiced
-concepts. A miss is scheduled again after roughly 8 questions, 32 questions,
+concepts. A normal session caps due reviews at 75% so a backlog still leaves
+five questions for new coverage; an explicitly targeted leak drill can remain
+review-only. A miss is scheduled again after roughly 8 questions, 32 questions,
 and on a later day. Stable invariant premiums are retired aggressively instead
 of consuming a fixed answer-category quota. A reasonable secondary action is
 accepted, but it does not count as full default-action mastery.

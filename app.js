@@ -1,18 +1,20 @@
 (() => {
   "use strict";
 
+  window.PotoTrainerReady = false;
+
   const engine = window.PotoRangeEngine;
   const scheduler = window.PotoTrainerScheduler;
   const evidence = window.PotoEvidence;
+
+  if (!engine || !scheduler || !evidence) {
+    renderBootFailure();
+    window.PotoTrainerReady = true;
+    return;
+  }
+
   const ACTIONS = engine.ACTIONS;
   const MODES = engine.MODES;
-
-  if (!scheduler) {
-    throw new Error("PotoTrainerScheduler failed to load.");
-  }
-  if (!evidence) {
-    throw new Error("PotoEvidence failed to load.");
-  }
 
   const STORAGE_KEYS = {
     settings: "poto_preflop_trainer_settings_v3",
@@ -34,6 +36,7 @@
   // Ten decisions let a miss on the first targeted question complete the
   // +8-intervening-question relearning window inside the same drill.
   const TARGETED_SESSION_TARGET = 10;
+  const MAX_DUE_REVIEW_SHARE = 0.75;
   const MAX_ANSWER_LOG = 500;
   const MAX_LEAK_RECORDS = 800;
   const STRATEGY_METADATA = typeof engine.getCorpusMetadata === "function"
@@ -57,13 +60,16 @@
   let stats = loadStats();
   let currentQuestion = null;
   let whyVisible = false;
-  let questionPresentedAt = 0;
+  let questionActiveStartedAt = null;
+  let questionActiveElapsedMs = 0;
   let activeTarget = null;
   let topLeak = null;
   let activeModal = null;
   let modalReturnFocus = null;
+  let windowFocused = typeof document.hasFocus === "function" ? document.hasFocus() : true;
   let session = createSession();
   const samplerState = {};
+  const failedStorageWrites = new Set();
 
   const el = {
     appContent: document.getElementById("appContent"),
@@ -153,6 +159,7 @@
   renderStats();
   renderSessionProgress();
   nextQuestion();
+  window.PotoTrainerReady = true;
 
   function bindEvents() {
     el.yesActionBtn.addEventListener("click", () => submitAnswer(getButtonAction(el.yesActionBtn)));
@@ -192,14 +199,19 @@
         return;
       }
       stats = defaultStats();
-      saveStats();
+      const saved = saveStats();
       renderStats();
       startSession();
-      showNotice("Stats reset.");
+      showNotice(saved ? "Stats reset." : "Stats reset for this tab, but progress could not be saved.");
     });
 
     if (document.addEventListener) {
       document.addEventListener("keydown", handleDocumentKeydown);
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+    }
+    if (window.addEventListener) {
+      window.addEventListener("blur", handleWindowBlur);
+      window.addEventListener("focus", handleWindowFocus);
     }
   }
 
@@ -251,6 +263,7 @@
   }
 
   function openModal(modal, focusTarget) {
+    pauseQuestionTimer(Date.now());
     modalReturnFocus = document.activeElement || null;
     activeModal = modal;
     modal.classList.remove("hidden");
@@ -279,7 +292,26 @@
       }
       safeFocus(modalReturnFocus);
       modalReturnFocus = null;
+      resumeQuestionTimer(Date.now());
     }
+  }
+
+  function handleVisibilityChange() {
+    if (document.hidden) {
+      pauseQuestionTimer(Date.now());
+    } else {
+      resumeQuestionTimer(Date.now());
+    }
+  }
+
+  function handleWindowBlur() {
+    windowFocused = false;
+    pauseQuestionTimer(Date.now());
+  }
+
+  function handleWindowFocus() {
+    windowFocused = true;
+    resumeQuestionTimer(Date.now());
   }
 
   function handleDocumentKeydown(evt) {
@@ -295,7 +327,7 @@
       return;
     }
     const focusable = Array.from(activeModal.querySelectorAll("button, select, input, summary, [tabindex]"))
-      .filter((node) => !node.disabled && !node.classList.contains("hidden"));
+      .filter((node) => !node.disabled && !node.classList.contains("hidden") && node.tabIndex !== -1);
     if (!focusable.length) return;
     const first = focusable[0];
     const last = focusable[focusable.length - 1];
@@ -401,24 +433,36 @@
   }
 
   function renderProfileDefinition() {
-    const firstSpot = enabledVsOpenSpots()[0];
-    if (!firstSpot || typeof engine.getVillainProfileDefinition !== "function") {
+    const openerPositions = Array.from(new Set(enabledVsOpenSpots().map((spot) => spot.openerPosition)));
+    if (!openerPositions.length || typeof engine.getVillainProfileDefinition !== "function") {
       el.profileDefinitionLine.textContent = "Controls only Villain's position-specific opening range when Hero faces a raise.";
       return;
     }
-    const definition = engine.getVillainProfileDefinition(settings.villainProfile, firstSpot.openerPosition);
-    el.profileDefinitionLine.textContent = definition.label + " " + definition.positionLabel +
-      " model: " + definition.pureOpenPercent + "% pure opens; up to " + definition.upperBoundOpenPercent +
-      "% including its qualitative mixed boundary. Provisional derived range, not observed Poto frequency.";
+    const definitions = openerPositions.map((position) =>
+      engine.getVillainProfileDefinition(settings.villainProfile, position)
+    );
+    if (definitions.length === 1) {
+      const definition = definitions[0];
+      el.profileDefinitionLine.textContent = definition.label + " " + definition.positionLabel +
+        " model: " + definition.pureOpenPercent + "% pure opens; up to " + definition.upperBoundOpenPercent +
+        "% including its qualitative mixed boundary. Provisional derived range, not observed Poto frequency.";
+      return;
+    }
+    el.profileDefinitionLine.textContent = definitions[0].label + " model by selected opener: " +
+      definitions.map((definition) => definition.positionLabel + " " + definition.pureOpenPercent + "-" +
+        definition.upperBoundOpenPercent + "%").join("; ") +
+      ". Each span runs from pure opens through the qualitative mixed boundary; these are provisional derived ranges, not observed Poto frequencies.";
   }
 
   function resetToLiveDefaults() {
     settings = defaultSettings();
-    saveSettings();
+    const saved = saveSettings();
     buildSettingsUI();
     renderStats();
     startSession({ focusQuestion: false });
-    showNotice("Live $1/$3 defaults restored.");
+    showNotice(saved
+      ? "Live $1/$3 defaults restored."
+      : "Live $1/$3 defaults apply to this tab, but could not be saved.");
   }
 
   function updateSetting(key, value) {
@@ -486,6 +530,7 @@
         }
         settings[settingKey] = value;
         saveSettings();
+        renderStats();
         startSession({ focusQuestion: false });
       });
 
@@ -572,6 +617,7 @@
       answered: 0,
       passing: 0,
       preferred: 0,
+      dueDrawn: 0,
       startedAt: Date.now(),
       ended: false
     };
@@ -631,8 +677,15 @@
   }
 
   function generateQuestion() {
-    const dueQuestion = drawDueQuestion();
+    const allowDueReview = scheduler.allowsDueReview({
+      sessionKind: session.kind,
+      answered: session.answered,
+      dueDrawn: session.dueDrawn,
+      maxShare: MAX_DUE_REVIEW_SHARE
+    });
+    const dueQuestion = allowDueReview ? drawDueQuestion() : null;
     if (dueQuestion) {
+      session.dueDrawn += 1;
       if (activeTarget && dueQuestion.questionKey === activeTarget.questionKey) {
         activeTarget.firstQuestion = false;
       }
@@ -643,6 +696,12 @@
       const hand = activeTarget.firstQuestion ? activeTarget.hand : null;
       activeTarget.firstQuestion = false;
       return buildQuestionFromArgs(activeTarget.args, hand || sampleHand({ ...activeTarget.args, samplingMode: settings.drillSamplingMode }), "targeted");
+    }
+
+    const exactPriorityQuestion = drawExactPriorityQuestion(allowDueReview);
+    if (exactPriorityQuestion) {
+      if (exactPriorityQuestion.source === "due review") session.dueDrawn += 1;
+      return exactPriorityQuestion;
     }
 
     const mode = drawDecisionMode();
@@ -719,6 +778,48 @@
 
   function currentLeakRows() {
     return Object.values(stats.byLeak || {}).filter(leakMatchesCurrentSettings);
+  }
+
+  function exactPriorityOptions(now) {
+    if (typeof scheduler.buildExactPriorityOptions !== "function") return [];
+    const recentHands = new Set(stats.recentHands || []);
+    const queuedQuestionKeys = (stats.relearningQueue || []).map((row) => row && row.questionKey).filter(Boolean);
+    const rows = currentLeakRows().map((leak) => {
+      const record = stats.byQuestion && stats.byQuestion[leak.questionKey];
+      return {
+        ...leak,
+        record,
+        conceptRecord: stats.byConcept && stats.byConcept[leak.conceptKey || (record && record.conceptKey)],
+        comboWeight: comboWeight(leak.hand),
+        isInvariant: Boolean(record && record.isInvariant),
+        isRecentHand: recentHands.has(leak.hand)
+      };
+    });
+    return scheduler.buildExactPriorityOptions(rows, {
+      sequence: stats.sequence,
+      now: now || Date.now(),
+      recentQuestionKeys: stats.recentQuestions || [],
+      excludedQuestionKeys: queuedQuestionKeys
+    });
+  }
+
+  function drawExactPriorityQuestion(allowDueReview) {
+    const options = exactPriorityOptions(Date.now());
+    if (!options.length) return null;
+    const due = allowDueReview ? options.filter((option) => option.dueNow) : [];
+    const weak = options.filter((option) => !option.dueNow);
+    if (!due.length && (!weak.length || Math.random() >= 0.3)) return null;
+    const candidates = scheduler.capWeightedOptions(due.length ? due : weak, 0.3);
+    const selected = drawWeightedOption(candidates.map((option) => ({
+      ...option,
+      id: option.questionKey,
+      value: option
+    }))).value;
+    return buildQuestionFromArgs(
+      selected.args,
+      selected.hand,
+      selected.dueNow ? "due review" : "exact priority"
+    );
   }
 
   function drawDecisionMode() {
@@ -996,8 +1097,12 @@
       openSize: question.openSize || settings.openSize
     });
     el.samplingLine.textContent = question.source === "due review"
-      ? "Due review · spaced relearning"
-      : (question.source === "targeted" ? "Targeted exact-spot drill" : SAMPLING_LABELS[settings.drillSamplingMode]);
+      ? "Due review · spaced retrieval"
+      : (question.source === "targeted"
+          ? "Targeted exact-spot drill"
+          : (question.source === "exact priority"
+              ? "Personal weak spot · adaptive priority"
+              : SAMPLING_LABELS[settings.drillSamplingMode]));
     el.samplingLine.classList.remove("hidden");
     el.handLine.textContent = question.handClass;
 
@@ -1023,8 +1128,31 @@
     el.coachTakeawayLine.textContent = "";
     el.viewCurrentChartBtn.classList.add("hidden");
     el.nextBtn.classList.add("hidden");
-    questionPresentedAt = Date.now();
+    el.questionPanel.setAttribute("aria-busy", "false");
+    resetQuestionTimer(Date.now());
     renderSessionProgress();
+  }
+
+  function resetQuestionTimer(now) {
+    questionActiveElapsedMs = 0;
+    questionActiveStartedAt = null;
+    resumeQuestionTimer(now);
+  }
+
+  function pauseQuestionTimer(now) {
+    if (questionActiveStartedAt === null) return;
+    questionActiveElapsedMs += Math.max(0, now - questionActiveStartedAt);
+    questionActiveStartedAt = null;
+  }
+
+  function resumeQuestionTimer(now) {
+    if (!currentQuestion || currentQuestion.answered || activeModal || document.hidden || !windowFocused || questionActiveStartedAt !== null) return;
+    questionActiveStartedAt = now;
+  }
+
+  function stopQuestionTimer(now) {
+    pauseQuestionTimer(now);
+    return Math.max(0, Math.min(10 * 60 * 1000, questionActiveElapsedMs));
   }
 
   function submitAnswer(takeAction) {
@@ -1032,9 +1160,9 @@
       return;
     }
 
-    currentQuestion.answered = true;
     const answeredAt = Date.now();
-    const responseLatencyMs = Math.max(0, Math.min(10 * 60 * 1000, answeredAt - questionPresentedAt));
+    const responseLatencyMs = stopQuestionTimer(answeredAt);
+    currentQuestion.answered = true;
     const recommendation = currentQuestion.recommendation;
     const grade = engine.gradeRecommendation(recommendation, takeAction);
 
@@ -1343,20 +1471,35 @@
 
     const rows = buildMatrixCells(mode, profile, size);
     el.chartMatrix.textContent = "";
-    rows.forEach(({ hand, recommendation }) => {
+    let focusedRecommendation = null;
+    rows.forEach(({ hand, recommendation }, cellIndex) => {
       const cell = document.createElement("button");
       cell.type = "button";
       cell.className = "chart-cell chart-" + engine.classifyForChart(recommendation);
       cell.textContent = hand;
-      cell.setAttribute("aria-label", hand + " " + engine.displayAction(recommendation.primaryAction));
-      cell.addEventListener("click", () => showChartDetail(recommendation));
+      const alternativeLabels = recommendation.allowedActions
+        .filter((action) => action !== recommendation.primaryAction)
+        .map(engine.displayAction)
+        .join(", ");
+      cell.setAttribute("aria-label", hand + " default " + engine.displayAction(recommendation.primaryAction) +
+        (alternativeLabels ? "; reasonable alternative " + alternativeLabels : ""));
+      const isInitialTabStop = focusHand ? focusHand === hand : cellIndex === 0;
+      cell.tabIndex = isInitialTabStop ? 0 : -1;
+      cell.setAttribute("tabindex", String(cell.tabIndex));
+      cell.addEventListener("click", () => {
+        setChartRovingFocus(cell);
+        showChartDetail(recommendation, true);
+      });
+      cell.addEventListener("keydown", (evt) => handleChartCellKeydown(evt, cellIndex));
       el.chartMatrix.appendChild(cell);
       if (focusHand && focusHand === hand) {
-        showChartDetail(recommendation);
+        focusedRecommendation = recommendation;
       }
     });
 
-    if (!focusHand && rows.length) {
+    if (focusedRecommendation) {
+      showChartDetail(focusedRecommendation, true);
+    } else if (rows.length) {
       showChartDetail(rows.find((row) => row.hand === "AQo")?.recommendation || rows[0].recommendation);
     }
   }
@@ -1408,7 +1551,7 @@
     });
   }
 
-  function showChartDetail(recommendation) {
+  function showChartDetail(recommendation, reveal) {
     const alternatives = recommendation.allowedActions
       .filter((action) => action !== recommendation.primaryAction)
       .map(engine.displayAction)
@@ -1447,6 +1590,33 @@
     if (takeaway.textContent) {
       el.chartDetail.appendChild(takeaway);
     }
+    if (reveal && typeof el.chartDetail.scrollIntoView === "function") {
+      const revealDetail = () => el.chartDetail.scrollIntoView({ block: "nearest" });
+      if (typeof window.requestAnimationFrame === "function") {
+        window.requestAnimationFrame(revealDetail);
+      } else {
+        window.setTimeout(revealDetail, 0);
+      }
+    }
+  }
+
+  function setChartRovingFocus(target) {
+    Array.from(el.chartMatrix.children).forEach((cell) => {
+      cell.tabIndex = cell === target ? 0 : -1;
+      cell.setAttribute("tabindex", String(cell.tabIndex));
+    });
+  }
+
+  function handleChartCellKeydown(evt, index) {
+    const offsets = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -13, ArrowDown: 13 };
+    if (!Object.prototype.hasOwnProperty.call(offsets, evt.key)) return;
+    if (evt.preventDefault) evt.preventDefault();
+    const cells = Array.from(el.chartMatrix.children);
+    const targetIndex = Math.max(0, Math.min(cells.length - 1, index + offsets[evt.key]));
+    const target = cells[targetIndex];
+    if (!target || target === cells[index]) return;
+    setChartRovingFocus(target);
+    safeFocus(target);
   }
 
   function updateChartControlVisibility(mode) {
@@ -1522,7 +1692,7 @@
     if (!leaks.length) {
       const li = document.createElement("li");
       li.className = "empty-row";
-      li.textContent = "No exact mistakes recorded under this strategy version.";
+      li.textContent = "No unresolved exact decisions under this strategy version.";
       el.leakList.appendChild(li);
     } else {
       leaks.slice(0, 5).forEach(renderLeakRow);
@@ -1533,28 +1703,32 @@
   }
 
   function getDueRows() {
-    if (typeof scheduler.getDueRelearning !== "function") return [];
     const availableQuestionKeys = currentLeakRows().map((row) => row.questionKey);
     if (!availableQuestionKeys.length) return [];
-    const rows = scheduler.getDueRelearning(stats, {
-      sequence: stats.sequence,
-      now: Date.now(),
-      sessionId: session.id,
-      availableQuestionKeys
-    });
-    return Array.isArray(rows) ? rows : [];
+    const now = Date.now();
+    const queued = typeof scheduler.getDueRelearning === "function"
+      ? scheduler.getDueRelearning(stats, {
+          sequence: stats.sequence,
+          now,
+          sessionId: session.id,
+          availableQuestionKeys
+        })
+      : [];
+    const exact = exactPriorityOptions(now).filter((row) => row.dueNow);
+    return Array.from(new Map([].concat(queued || [], exact).map((row) => [row.questionKey, row])).values());
   }
 
   function rankedLeaks() {
     const dueKeys = new Set(getDueRows().map((row) => row.questionKey));
-    return currentLeakRows().filter((row) => row && row.misses > 0)
+    return currentLeakRows().filter(Boolean)
       .map((row) => ({ ...row, dueNow: dueKeys.has(row.questionKey) }))
-      .filter((row) => row.unresolved !== false || row.dueNow)
-      .sort((a, b) => leakPriority(b) - leakPriority(a) || b.lastMissedAt - a.lastMissedAt);
+      .filter((row) => row.dueNow || (row.unresolved !== false && (row.misses > 0 || row.nonPreferred > 0)))
+      .sort((a, b) => leakPriority(b) - leakPriority(a) || (b.lastMissedAt || 0) - (a.lastMissedAt || 0));
   }
 
   function leakPriority(row) {
-    return (row.dueNow ? 100 : 0) + row.misses * 8 + row.lapses * 12 + (row.attempts ? row.misses / row.attempts * 10 : 0);
+    return (row.dueNow ? 100 : 0) + (row.misses || 0) * 8 + (row.nonPreferred || 0) * 4 + (row.lapses || 0) * 12 +
+      (row.attempts ? (row.misses || 0) / row.attempts * 10 : 0);
   }
 
   function renderLeakRow(leak) {
@@ -1586,6 +1760,10 @@
 
   function leakSummary(leak) {
     const recurring = Object.entries(leak.wrongActions || {}).sort((a, b) => b[1] - a[1])[0];
+    if (!leak.misses && leak.nonPreferred) {
+      return "Accepted but non-default " + leak.nonPreferred + "× · Default " + engine.displayAction(leak.primaryAction) +
+        " · " + leak.attempts + " attempt" + (leak.attempts === 1 ? "" : "s");
+    }
     return (recurring ? "Recurring choice " + engine.displayAction(recurring[0]) + " " + recurring[1] + "× · " : "") +
       "Default " + engine.displayAction(leak.primaryAction) + " · " + leak.misses + " miss" + (leak.misses === 1 ? "" : "es") +
       " in " + leak.attempts + " attempt" + (leak.attempts === 1 ? "" : "s");
@@ -1702,7 +1880,14 @@
   }
 
   function saveSettings() {
-    safeSetStorage(STORAGE_KEYS.settings, JSON.stringify(settings));
+    const recovering = failedStorageWrites.has(STORAGE_KEYS.settings);
+    const saved = safeSetStorage(STORAGE_KEYS.settings, JSON.stringify(settings));
+    if (!saved) {
+      showNotice("Could not save settings. Changes apply only while this tab stays open.");
+    } else if (recovering) {
+      showNotice("Settings saving restored.");
+    }
+    return saved;
   }
 
   function defaultStats() {
@@ -1826,9 +2011,11 @@
 
   function saveStats() {
     pruneLeakRecords(stats);
-    if (!safeSetStorage(STORAGE_KEYS.stats, JSON.stringify(stats))) {
+    const saved = safeSetStorage(STORAGE_KEYS.stats, JSON.stringify(stats));
+    if (!saved) {
       persistenceWarning = true;
     }
+    return saved;
   }
 
   function pruneLeakRecords(targetStats) {
@@ -1854,11 +2041,10 @@
   }
 
   function safeGetStorage(key) {
-    if (!storageAvailable) {
-      return null;
-    }
     try {
-      return window.localStorage.getItem(key);
+      const value = window.localStorage.getItem(key);
+      storageAvailable = true;
+      return value;
     } catch (err) {
       storageAvailable = false;
       return null;
@@ -1866,16 +2052,32 @@
   }
 
   function safeSetStorage(key, value) {
-    if (!storageAvailable) {
-      return false;
-    }
     try {
       window.localStorage.setItem(key, value);
+      storageAvailable = true;
+      failedStorageWrites.delete(key);
+      persistenceWarning = failedStorageWrites.size > 0;
       return true;
     } catch (err) {
       storageAvailable = false;
+      failedStorageWrites.add(key);
       persistenceWarning = true;
       return false;
     }
+  }
+
+  function renderBootFailure() {
+    const host = document.getElementById("appContent") || document.body;
+    if (!host || typeof document.createElement !== "function") return;
+    const panel = document.createElement("section");
+    panel.className = "panel";
+    panel.setAttribute("role", "alert");
+    const title = document.createElement("h2");
+    title.textContent = "Trainer couldn't start";
+    const copy = document.createElement("p");
+    copy.textContent = "A required app file did not load. Check your connection, then refresh this page.";
+    panel.append(title, copy);
+    host.textContent = "";
+    host.appendChild(panel);
   }
 })();

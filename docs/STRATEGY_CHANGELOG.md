@@ -1,5 +1,33 @@
 # Strategy corpus change record
 
+## Training reliability correction — 2026-07-12
+
+The action corpus remains `poto-live-1-3-provisional-v4`; its action fingerprint
+and SHA-256 action snapshot are unchanged. This release changes training safety
+and scheduling, not valid poker actions:
+
+- unsupported modes, impossible position sequences, and invalid hand classes
+  are explicitly ungraded instead of inheriting a fold or an unrelated range;
+- exact due and weak decisions can enter a global priority lane before broad
+  mode/context sampling, while queued +8/+32 spacing remains protected;
+- normal sessions reserve 25% of their slots for new coverage during a review
+  backlog, while targeted drills may remain review-only;
+- overdue delayed reviews no longer starve behind new first-stage misses;
+- capacity-pruned review entries reconstruct their next spacing stage instead
+  of silently losing the +32 and one-day retrievals;
+- concept transfer tapers over the first three exact observations and can never
+  wash out an unresolved exact miss;
+- small-pair and small-blind call coaching no longer overstates hand strength or
+  contradicts the displayed default action;
+- production reads the reviewed fingerprint constant immediately, while
+  integrity checks still recompute the full action snapshot.
+- response timing excludes settings, charts, hidden tabs, and unfocused-window
+  time; storage failures and missing app assets now surface visible recovery
+  states instead of false success or a dead trainer shell.
+
+Because valid action signatures did not change, existing exact mastery remains
+compatible. Unsupported scenarios never count toward mastery.
+
 ## Room-evidence calibration — 2026-07-12
 
 The action corpus remains `poto-live-1-3-provisional-v4`; its action fingerprint

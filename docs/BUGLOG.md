@@ -1,5 +1,32 @@
 # Bug log
 
+## 2026-07-12 - Training runtime could distort priority or teach unsupported spots
+
+**Issue:** Unsupported position/mode inputs could become gradeable advice,
+exact retention reviews could remain hidden behind context sampling, later
+spaced reviews could be starved, modal/hidden time inflated response latency,
+non-default passing answers were absent from the leak dashboard, and one
+storage write failure disabled persistence for the rest of the session.
+
+**Root Cause:** Recommendation dispatch used permissive fallbacks; the sampler
+selected mode and context before most exact evidence; queue urgency favored
+early stages; the timer used wall-clock time; the dashboard filtered only
+misses; and storage availability was treated as permanently false after one
+exception.
+
+**Fix:** Return explicit ungraded recommendations for unsupported inputs; add a
+capped exact-priority lane and balanced queue urgency; count only active
+question time, including excluding unfocused-window time; cap normal-session
+review backlog at 75%; reconstruct pruned spacing stages; show unresolved
+acceptable alternatives; retry storage writes without false success; and
+render a visible recovery state when any required script, including `app.js`,
+is missing. Chart cells now use one roving keyboard tab stop and reveal the
+selected explanation.
+
+**Test:** Deterministic range, scheduler, fake-clock, storage-failure,
+missing-dependency, dashboard, queue-capacity, and app-flow regressions cover
+each behavior.
+
 ## 2026-07-09 - Next hand kept the mobile scroll position
 
 **Issue:** After reviewing an explanation and tapping **Next Hand**, the new question loaded while the viewport stayed down in the stats section.

@@ -526,6 +526,14 @@
 
   function getCorpusFingerprint(presetId) {
     const id = normalizePresetId(presetId);
+    if (id === DEFAULT_PRESET_ID && EXPECTED_ACTION_FINGERPRINT !== "PENDING") {
+      return EXPECTED_ACTION_FINGERPRINT;
+    }
+    return computeCorpusFingerprint(id);
+  }
+
+  function computeCorpusFingerprint(presetId) {
+    const id = normalizePresetId(presetId);
     if (!CORPUS_FINGERPRINT_CACHE.has(id)) {
       CORPUS_FINGERPRINT_CACHE.set(id, "fnv1a32:" + fnv1a32(getCorpusActionSnapshot(id)));
     }
@@ -892,6 +900,25 @@
   function getStructuredCoachingFacts(args, recommendation) {
     const input = { ...(args || {}) };
     const rec = recommendation || recommendCore(input);
+    if (rec.supported === false || rec.gradable === false) {
+      return {
+        facts: {
+          sourceStatus: CORPUS_METADATA.status,
+          reviewStatus: CORPUS_METADATA.reviewStatus,
+          frequencyKind: "unsupported",
+          actionFrequencyPercent: null,
+          evRegretBand: null,
+          strategyRuleId: "",
+          operationalControls: {
+            openerProfile: false,
+            openSize: false,
+            heroBaseline: false
+          },
+          nearestContrast: null
+        },
+        counterfactuals: []
+      };
+    }
     const sensitivity = getStrategySensitivity({ ...input, hand: rec.hand });
     const counterfactuals = [];
     Object.entries(sensitivity.dimensions).forEach(([dimension, detail]) => {
@@ -959,6 +986,14 @@
   }
 
   function buildCoachNotes(args, recommendation, facts) {
+    if (recommendation.supported === false || recommendation.gradable === false) {
+      return {
+        reason: recommendation.explanation,
+        adjustment: "Choose a scenario available in the trainer before applying a range action.",
+        takeaway: "Unsupported scenarios are not strategy advice and do not count toward mastery.",
+        actionNotes: {}
+      };
+    }
     const hand = normalizeHand(args.hand || recommendation.hand);
     const traits = classifyHand(hand);
     if (recommendation.mode === MODES.RFI) {
@@ -1031,7 +1066,9 @@
       }
     } else if (recommendation.primaryAction === ACTIONS.CALL) {
       if (traits.isPair) {
-        reason = boundaryLead + traits.hand + " keeps solid showdown value as a pocket pair and can flop a set; the price and this exact " + hero + " spot make a call reasonable.";
+        reason = isSmallPocketPair(traits)
+          ? boundaryLead + traits.hand + " is a small pocket pair with limited unimproved showdown value. Its main upside is flopping a set; the price and this exact " + hero + " spot make a call reasonable."
+          : boundaryLead + traits.hand + " has meaningful pair value and can flop a set; the price and this exact " + hero + " spot make a call reasonable.";
       } else if (traits.isSuited) {
         reason = boundaryLead + traits.hand + " combines suitedness with enough high-card or connected strength to continue without inflating the pot.";
       } else {
@@ -1090,7 +1127,9 @@
         takeaway = "Small pocket pairs need enough price and position; set potential alone does not require a call.";
       }
     } else if (args.heroPosition === "SB") {
-      takeaway = "Small blind plays the rest of the hand out of position: prefer a clear 3-bet or disciplined fold over a marginal call.";
+      takeaway = recommendation.primaryAction === ACTIONS.CALL
+        ? "This hand clears the high bar for a small-blind call, but it still plays every postflop street out of position."
+        : "Small blind plays the rest of the hand out of position: prefer a clear 3-bet or disciplined fold over a marginal call.";
     } else if (args.heroPosition === "BB") {
       takeaway = "Big blind gets the best preflop price but still plays out of position after the flop.";
     } else if (args.openerPosition === "UTG" || args.openerPosition === "UTG1") {
@@ -1146,7 +1185,9 @@
         : "Folding is more conservative than this range because " + describeHandStrength(traits) + ".");
 
     if (recommendation.primaryAction === ACTIONS.CALL) {
-      notes[ACTIONS.CALL] = "Calling keeps the pot controlled while using this hand's showdown value or playability.";
+      notes[ACTIONS.CALL] = isSmallPocketPair(traits)
+        ? "Calling is set-driven: this small pair has limited unimproved showdown value, so price and stack depth matter."
+        : "Calling keeps the pot controlled while using this hand's showdown value or playability.";
     } else if (allowed.has(ACTIONS.CALL)) {
       notes[ACTIONS.CALL] = "Calling can work if the opener proves wider or the price is smaller; under the selected assumptions it is not the baseline.";
     } else if (recommendation.primaryAction === ACTIONS.THREE_BET) {
@@ -1197,7 +1238,9 @@
 
   function describeHandStrength(traits) {
     if (traits.isPair) {
-      return "it is a pocket pair with solid raw equity and set potential";
+      return isSmallPocketPair(traits)
+        ? "it is a made pair with set potential, though its unimproved showdown value is limited"
+        : "it is a pocket pair with useful raw equity and set potential";
     }
     if (traits.isSuitedAce) {
       return "it combines an ace blocker with suited playability";
@@ -1220,6 +1263,10 @@
       return "suitedness gives it more ways to improve after the flop";
     }
     return "its cards have enough rank and connection for this range";
+  }
+
+  function isSmallPocketPair(traits) {
+    return traits.isPair && ["22", "33", "44", "55", "66"].includes(traits.hand);
   }
 
   function describeHandLimitation(traits) {
@@ -1291,10 +1338,18 @@
     if (mode === MODES.RFI) {
       return recommendRfi(args);
     }
+    if (mode === MODES.VS_OPEN) {
+      return recommendVsOpen(args);
+    }
     if (mode === MODES.FOUR_BET) {
       return recommendFourBet(args);
     }
-    return recommendVsOpen(args);
+    return makeUnsupportedRecommendation({
+      mode,
+      hand: normalizeHand(args && args.hand),
+      explanation: "This decision mode is not supported by the trainer.",
+      contextLabel: "Unsupported mode: " + String(mode || "unknown")
+    });
   }
 
   function getChartCellRecommendation(args) {
@@ -1306,7 +1361,19 @@
     const heroBaseline = resolveHeroBaseline(args);
     const position = args && args.position;
     const hand = normalizeHand(args && args.hand);
-    const row = preset.rfi[heroBaseline][position] || preset.rfi[DEFAULT_HERO_BASELINE].UTG;
+    if (!RFI_POSITIONS.includes(position) || !HAND_CLASS_SET.has(hand)) {
+      return makeUnsupportedRecommendation({
+        mode: MODES.RFI,
+        hand,
+        explanation: !RFI_POSITIONS.includes(position)
+          ? (position === "BB"
+            ? "This position is not a supported first-in node. The big blind cannot open first in."
+            : "This position is not a supported first-in node.")
+          : "This hand class is not supported by the trainer.",
+        contextLabel: "RFI " + positionLabel(position)
+      });
+    }
+    const row = preset.rfi[heroBaseline][position];
     const openSet = parseRangeList(row.open);
     const mixedSet = parseRangeList(row.mixed);
 
@@ -1361,12 +1428,12 @@
     const template = templateId ? preset.vsOpen.templates[templateId] : null;
 
     if (!template || !HAND_CLASS_SET.has(hand)) {
-      return makeRecommendation({
+      return makeUnsupportedRecommendation({
         mode: MODES.VS_OPEN,
         hand,
-        primaryAction: ACTIONS.FOLD,
-        allowedActions: [ACTIONS.FOLD],
-        explanation: "Fold. This is not a supported live $1/$3 facing-open spot in the trainer.",
+        explanation: !HAND_CLASS_SET.has(hand)
+          ? "This hand class is not supported by the trainer."
+          : "This facing-open position sequence is not a supported trainer node.",
         contextLabel: positionLabel(openerPosition) + " opens, Hero " + positionLabel(heroPosition),
         rangeLabel: "Unsupported spot"
       });
@@ -1405,6 +1472,14 @@
   function recommendFourBet(args) {
     const preset = RANGE_PRESETS[normalizePresetId(args && args.presetId)];
     const hand = normalizeHand(args && args.hand);
+    if (!HAND_CLASS_SET.has(hand)) {
+      return makeUnsupportedRecommendation({
+        mode: MODES.FOUR_BET,
+        hand,
+        explanation: "This hand class is not supported by the trainer.",
+        contextLabel: "4-bet"
+      });
+    }
     const mode = (args && args.fourBetStyle) === "AGGRO" ? "AGGRO" : "DEFAULT";
     const row = preset.vsOpen.fourBet[mode];
     const fourBetSet = parseRangeList(row.fourBet);
@@ -1573,6 +1648,24 @@
     };
   }
 
+  function makeUnsupportedRecommendation(input) {
+    return {
+      mode: input.mode,
+      hand: input.hand,
+      primaryAction: null,
+      allowedActions: [],
+      frequency: "",
+      explanation: input.explanation || "This scenario is not supported by the trainer.",
+      defaultFoldWhen: { profiles: [], sizes: [] },
+      actionTag: "",
+      contextLabel: input.contextLabel || "Unsupported scenario",
+      rangeLabel: input.rangeLabel || "Unsupported scenario",
+      strategyRuleId: "",
+      supported: false,
+      gradable: false
+    };
+  }
+
   function uniqueActions(actions) {
     const out = [];
     actions.forEach((action) => {
@@ -1589,6 +1682,9 @@
   }
 
   function gradeRecommendation(recommendation, chosenAction) {
+    if (!recommendation || recommendation.supported === false || recommendation.gradable === false) {
+      return unsupportedGrade(recommendation);
+    }
     const chosen = chosenAction === "3-BET" ? ACTIONS.THREE_BET : chosenAction;
     const primary = recommendation.primaryAction;
     const allowed = recommendation.allowedActions || [primary];
@@ -1648,6 +1744,9 @@
   }
 
   function gradeThreeBetDecision(recommendation, wantsThreeBet) {
+    if (!recommendation || recommendation.supported === false || recommendation.gradable === false) {
+      return unsupportedGrade(recommendation);
+    }
     if (wantsThreeBet) {
       return gradeRecommendation(recommendation, ACTIONS.THREE_BET);
     }
@@ -1678,11 +1777,28 @@
     };
   }
 
+  function unsupportedGrade(recommendation) {
+    return {
+      label: "Not graded",
+      detail: recommendation && recommendation.explanation
+        ? recommendation.explanation
+        : "This scenario is not supported by the trainer.",
+      isPreferred: false,
+      isAcceptable: false,
+      isPassing: false,
+      severity: "ungraded",
+      gradable: false
+    };
+  }
+
   function displayAction(action) {
     return ACTION_LABELS[action] || action || "";
   }
 
   function classifyForChart(recommendation) {
+    if (recommendation && recommendation.supported === false) {
+      return "unsupported";
+    }
     if (!recommendation || !recommendation.primaryAction) {
       return "fold";
     }
@@ -1712,7 +1828,9 @@
     };
     ALL_HAND_CLASSES.forEach((hand) => {
       const rec = recommend({ ...args, hand });
-      if (rec.allowedActions.length > 1) {
+      if (rec.supported === false) {
+        groups.other.push(hand);
+      } else if (rec.allowedActions.length > 1) {
         groups.mixed.push(hand);
       } else if (rec.primaryAction === ACTIONS.FOLD) {
         groups.other.push(hand);
@@ -2094,7 +2212,7 @@
     validateCorpusProvenance(errors);
     validateExplicitAdjustments(id, errors);
     validateCorpusCoverage(id, errors);
-    const fingerprint = getCorpusFingerprint(id);
+    const fingerprint = computeCorpusFingerprint(id);
     if (EXPECTED_ACTION_FINGERPRINT === "PENDING" || fingerprint !== EXPECTED_ACTION_FINGERPRINT) {
       errors.push("Corpus action fingerprint changed: expected " + EXPECTED_ACTION_FINGERPRINT + ", received " + fingerprint);
     }
@@ -2310,6 +2428,7 @@
     getAssumptionLabel,
     getChartCellRecommendation,
     getConceptTags,
+    computeCorpusFingerprint,
     getCorpusActionSnapshot,
     getCorpusFingerprint,
     getCorpusMetadata,
